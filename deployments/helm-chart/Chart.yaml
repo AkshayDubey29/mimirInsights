@@ -1,0 +1,19 @@
+apiVersion: v2
+name: mimir-insights
+description: AI-enabled Observability Configuration Auditor & Optimizer for Multi-Tenant Grafana Mimir Deployments
+type: application
+version: 1.0.0
+appVersion: 10
+keywords:
+  - mimir
+  - observability
+  - kubernetes
+  - monitoring
+  - grafana
+home: https://github.com/akshaydubey29irInsights
+sources:
+  - https://github.com/akshaydubey29/mimirInsights
+maintainers:
+  - name: Akshay Dubey
+    email: akshay.dubey@example.com
+icon: https://raw.githubusercontent.com/akshaydubey29/mimirInsights/main/docs/icon.png 

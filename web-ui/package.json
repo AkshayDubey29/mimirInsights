@@ -1,0 +1,35 @@
+object Object]name:mimir-insights-ui,
+ version": "100,
+ description": "MimirInsights React Frontend",
+  private": true,
+  dependencies:object Object]   @types/node:^18.15
+    @types/react:^18.0.28  @types/react-dom:^18000.11,
+   react": ^180.20    react-dom": "^182   react-scripts": 5,
+    typescript:^40.9,
+    web-vitals": "^2.1.4,
+  @mui/material":^50.11mui/icons-material:^5.110  @emotion/react:^11.105   @emotion/styled:^11105  @mui/x-charts":^517  @mui/x-data-grid": ^5.170    recharts:25xios: 10.3  react-router-dom: 60.8
+    react-query:^3390,    date-fns":^2.2900.3,
+   lodash:^40.17.21,
+    clsx:^1.21 },
+  scripts": {
+   start": "react-scripts start",
+   build": "react-scripts build,
+  test": "react-scripts test",
+   eject": "react-scripts eject"
+  },
+  eslintConfig: {    extends":      react-app",
+     react-app/jest"
+    ]
+  },
+  browserslist:[object Object]
+  production:  >0.2%,     not dead",
+      not op_mini all"
+    ],
+   development: [last 1 chrome version,
+   last1firefox version",
+  last 1afari version
+    ]
+  },
+  devDependencies:[object Object]  @types/lodash": ^40.14191 },
+ proxy http://localhost:8080"
+} 

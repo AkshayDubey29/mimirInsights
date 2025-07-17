@@ -1,0 +1,174 @@
+# Default values for mimir-insights
+
+# Global
+imageRegistry: ghcr.io/akshaydubey29
+
+backend:
+  enabled: true
+  image:
+    repository: mimir-insights-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  env:
+    - name: MIMIR_NAMESPACE
+      value: mimir
+    - name: MIMIR_API_URL
+      value: http://mimir-distributor:9090
+    - name: LOG_LEVEL
+      value: info
+    - name: K8S_IN_CLUSTER
+      value: "true"
+  config:
+    mimir:
+      namespace: mimir
+      api_url: http://mimir-distributor:9090
+      timeout: 30
+    k8s:
+      in_cluster: true
+      tenant_label: team
+      tenant_prefix: tenant-
+    log:
+      level: info
+      format: json
+    ui:
+      theme: dark
+      refresh_interval: 30
+    llm:
+      enabled: false
+      provider: openai
+      model: gpt-4
+      max_tokens: 1000
+
+frontend:
+  enabled: true
+  image:
+    repository: mimir-insights-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 10m
+      memory: 128Mi
+    limits:
+      cpu: 20m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: insights.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+        - path: /api
+          pathType: Prefix
+  tls: []
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: mimir-insights
+  annotations: {}
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+probes:
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+annotations: {}
+labels: {}
+priorityClassName: ""
+
+networkPolicy:
+  enabled: false
+  ingressRules: []
+  egressRules: []
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    port: metrics
+  prometheusRule:
+    enabled: false
+    rules: []
+
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: 7
+  storage:
+    type: s3
+    bucket: mimir-insights-backups
+    region: us-west-2
+
+features:
+  driftDetection: true
+  capacityPlanning: true
+  llmIntegration: false
+  alloyTuning: true
+  gitopsIntegration: false 
