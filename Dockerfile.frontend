@@ -43,5 +43,6 @@ EXPOSE 3000
 # Health check
 HEALTHCHECK --interval=30timeout=3s --start-period=5 --retries=3 \
   CMD wget --no-verbose --tries=1r http://localhost:3000 || exit1
+
 # Start nginx
 CMDnginx", -g, 
