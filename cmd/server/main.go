@@ -2,20 +2,20 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	github.com/akshaydubey29/mimirInsights/pkg/api"
-	github.com/akshaydubey29/mimirInsights/pkg/config"
-	github.com/akshaydubey29/mimirInsights/pkg/discovery"
-	github.com/akshaydubey29/mimirInsights/pkg/limits"
-	github.com/akshaydubey29/mimirInsights/pkg/metrics"
-	github.com/gin-gonic/gin"
-	github.com/sirupsen/logrus"
-	github.com/spf13/viper"
+
+	"github.com/akshaydubey29/mimirInsights/pkg/api"
+	"github.com/akshaydubey29/mimirInsights/pkg/config"
+	"github.com/akshaydubey29/mimirInsights/pkg/discovery"
+	"github.com/akshaydubey29/mimirInsights/pkg/limits"
+	"github.com/akshaydubey29/mimirInsights/pkg/metrics"
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 func main() {
@@ -42,12 +42,13 @@ func main() {
 
 	// Setup Gin router
 	router := gin.Default()
-	
+
 	// Add CORS middleware
 	router.Use(gin.Recovery())
-	
+
 	// API routes
 	apiGroup := router.Group("/api")
+	{
 		apiGroup.GET("/health", server.HealthCheck)
 		apiGroup.GET("/tenants", server.GetTenants)
 		apiGroup.GET("/limits", server.GetLimits)
@@ -71,7 +72,7 @@ func main() {
 
 	// Create HTTP server
 	srv := &http.Server{
-		Addr: ":" + port,
+		Addr:    ":" + port,
 		Handler: router,
 	}
 
@@ -99,4 +100,4 @@ func main() {
 	}
 
 	logrus.Info("Server exited")
-} 
+}

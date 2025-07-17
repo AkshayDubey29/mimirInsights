@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	github.com/akshaydubey29/mimirInsights/pkg/config"
-	github.com/sirupsen/logrus"
+
+	"github.com/akshaydubey29/mimirInsights/pkg/config"
+	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	k8s.io/client-go/rest"
-	k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // Client wraps the Kubernetes client with additional functionality
@@ -24,7 +26,7 @@ type Client struct {
 // NewClient creates a new Kubernetes client
 func NewClient() (*Client, error) {
 	cfg := config.Get()
-	
+
 	var k8sConfig *rest.Config
 	var err error
 
@@ -58,7 +60,7 @@ func NewClient() (*Client, error) {
 	}
 
 	logrus.Info("Kubernetes client initialized successfully")
-	
+
 	return &Client{
 		clientset: clientset,
 		config:    cfg,
@@ -131,17 +133,17 @@ func (c *Client) UpdateConfigMap(ctx context.Context, namespace string, configMa
 }
 
 // PatchDeployment patches a deployment
-func (c *Client) PatchDeployment(ctx context.Context, namespace, name string, pt string, data []byte, opts metav1.PatchOptions) (*appsv1.Deployment, error) {
+func (c *Client) PatchDeployment(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*appsv1.Deployment, error) {
 	return c.clientset.AppsV1().Deployments(namespace).Patch(ctx, name, pt, data, opts)
 }
 
 // PatchStatefulSet patches a statefulset
-func (c *Client) PatchStatefulSet(ctx context.Context, namespace, name string, pt string, data []byte, opts metav1.PatchOptions) (*appsv1.StatefulSet, error) {
+func (c *Client) PatchStatefulSet(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*appsv1.StatefulSet, error) {
 	return c.clientset.AppsV1().StatefulSets(namespace).Patch(ctx, name, pt, data, opts)
 }
 
 // PatchConfigMap patches a configmap
-func (c *Client) PatchConfigMap(ctx context.Context, namespace, name string, pt string, data []byte, opts metav1.PatchOptions) (*corev1.ConfigMap, error) {
+func (c *Client) PatchConfigMap(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*corev1.ConfigMap, error) {
 	return c.clientset.CoreV1().ConfigMaps(namespace).Patch(ctx, name, pt, data, opts)
 }
 
@@ -220,4 +222,4 @@ func (c *Client) GetClusterInfo(ctx context.Context) (map[string]interface{}, er
 	info["namespaceCount"] = len(namespaces.Items)
 
 	return info, nil
-} 
+}

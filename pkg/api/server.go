@@ -90,7 +90,7 @@ func (s *Server) GetTenants(c *gin.Context) {
 	result, err := s.discoveryEngine.DiscoverAll(ctx)
 	if err != nil {
 		s.recordError(c, "discovery_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -128,7 +128,7 @@ func (s *Server) GetLimits(c *gin.Context) {
 		result, err := s.discoveryEngine.DiscoverAll(ctx)
 		if err != nil {
 			s.recordError(c, "discovery_error", start)
-			c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -141,7 +141,7 @@ func (s *Server) GetLimits(c *gin.Context) {
 	limitsSummary, err := s.limitsAnalyzer.GetTenantLimitsSummary(ctx, tenantNames)
 	if err != nil {
 		s.recordError(c, "limits_analysis_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -162,7 +162,7 @@ func (s *Server) GetConfig(c *gin.Context) {
 	result, err := s.discoveryEngine.DiscoverAll(ctx)
 	if err != nil {
 		s.recordError(c, "discovery_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -218,7 +218,7 @@ func (s *Server) AnalyzeTenant(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&request); err != nil {
 		s.recordError(c, "validation_error", start)
-		c.JSON(http.StatusBadRequest, gin.H{error: err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -226,22 +226,22 @@ func (s *Server) AnalyzeTenant(c *gin.Context) {
 	var timeRange metrics.TimeRange
 	switch request.TimeRange {
 	case "48h":
-		timeRange = metrics.CreateTimeRange(48*time.Hour, 5*time.Minute)
+		timeRange = metrics.CreateTimeRange(48*time.Hour, "5m")
 	case "7d":
-		timeRange = metrics.CreateTimeRange(7*24*time.Hour, 15*time.Minute)
+		timeRange = metrics.CreateTimeRange(7*24*time.Hour, "15m")
 	case "30d":
 		timeRange = metrics.CreateTimeRange(30*24*time.Hour, "1h")
 	case "60d":
-		timeRange = metrics.CreateTimeRange(60*24*time.Hour, 2*time.Hour)
+		timeRange = metrics.CreateTimeRange(60*24*time.Hour, "2h")
 	default:
-		timeRange = metrics.CreateTimeRange(7*24*time.Hour, 15*time.Minute) // Default to 7d
+		timeRange = metrics.CreateTimeRange(7*24*time.Hour, "15m") // Default to 7d
 	}
 
 	// Get tenant metrics
 	tenantMetrics, err := s.metricsClient.GetTenantMetrics(ctx, request.TenantName, timeRange)
 	if err != nil {
 		s.recordError(c, "metrics_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -249,7 +249,7 @@ func (s *Server) AnalyzeTenant(c *gin.Context) {
 	tenantLimits, err := s.limitsAnalyzer.AnalyzeTenantLimits(ctx, request.TenantName)
 	if err != nil {
 		s.recordError(c, "limits_analysis_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -297,7 +297,7 @@ func (s *Server) GetCapacityReport(c *gin.Context) {
 		result, err := s.discoveryEngine.DiscoverAll(ctx)
 		if err != nil {
 			s.recordError(c, "discovery_error", start)
-			c.JSON(http.StatusInternalServerError, gin.H{error: err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 

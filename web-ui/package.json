@@ -1,35 +1,56 @@
-object Object]name:mimir-insights-ui,
- version": "100,
- description": "MimirInsights React Frontend",
-  private": true,
-  dependencies:object Object]   @types/node:^18.15
-    @types/react:^18.0.28  @types/react-dom:^18000.11,
-   react": ^180.20    react-dom": "^182   react-scripts": 5,
-    typescript:^40.9,
-    web-vitals": "^2.1.4,
-  @mui/material":^50.11mui/icons-material:^5.110  @emotion/react:^11.105   @emotion/styled:^11105  @mui/x-charts":^517  @mui/x-data-grid": ^5.170    recharts:25xios: 10.3  react-router-dom: 60.8
-    react-query:^3390,    date-fns":^2.2900.3,
-   lodash:^40.17.21,
-    clsx:^1.21 },
-  scripts": {
-   start": "react-scripts start",
-   build": "react-scripts build,
-  test": "react-scripts test",
-   eject": "react-scripts eject"
+{
+  "name": "mimir-insights-ui",
+  "version": "1.0.0",
+  "description": "MimirInsights React Frontend",
+  "private": true,
+  "dependencies": {
+    "@types/node": "^18.15.0",
+    "@types/react": "^18.0.28",
+    "@types/react-dom": "^18.0.11",
+    "react": "^18.0.20",
+    "react-dom": "^18.0.20",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5",
+    "web-vitals": "^2.1.4",
+    "@mui/material": "^5.11.0",
+    "@mui/icons-material": "^5.11.0",
+    "@emotion/react": "^11.10.5",
+    "@emotion/styled": "^11.10.5",
+    "@mui/x-data-grid": "^5.17.0",
+    "recharts": "^2.5.0",
+    "axios": "^1.3.0",
+    "react-router-dom": "^6.8.0",
+    "react-query": "^3.39.0",
+    "date-fns": "^2.29.3",
+    "lodash": "^4.17.21",
+    "clsx": "^1.2.1"
   },
-  eslintConfig: {    extends":      react-app",
-     react-app/jest"
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
     ]
   },
-  browserslist:[object Object]
-  production:  >0.2%,     not dead",
-      not op_mini all"
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
     ],
-   development: [last 1 chrome version,
-   last1firefox version",
-  last 1afari version
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
     ]
   },
-  devDependencies:[object Object]  @types/lodash": ^40.14191 },
- proxy http://localhost:8080"
+  "devDependencies": {
+    "@types/lodash": "^4.14.191"
+  },
+  "proxy": "http://localhost:8080"
 } 
