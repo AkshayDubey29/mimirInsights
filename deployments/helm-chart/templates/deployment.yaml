@@ -1,30 +1,32 @@
-[object Object]{- if .Values.backend.enabled }}
+{{- if .Values.backend.enabled }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "mimir-insights.fullname" . }}-backend
-  namespace: {{ includemimir-insights.namespace" . }}
+  namespace: {{ include "mimir-insights.namespace" . }}
   labels:
-    {{- includemimir-insights.labels" . | nindent 4 }}
+    {{- include "mimir-insights.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
   selector:
     matchLabels:
-      {{- include "mimir-insights.selectorLabels" . | nindent6    app.kubernetes.io/component: backend
+      {{- include "mimir-insights.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
   template:
     metadata:
       labels:
-        {{- include "mimir-insights.selectorLabels" . | nindent8 }}
+        {{- include "mimir-insights.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
       {{- with .Values.podAnnotations }}
       annotations:
-      [object Object]{- toYaml . | nindent 8
-  [object Object]{- end }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml .Values.imagePullSecrets | nindent 8
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "mimir-insights.serviceAccountName" . }}
       securityContext:
@@ -33,41 +35,105 @@ spec:
         - name: {{ .Chart.Name }}-backend
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: {{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          image: "{{ .Values.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 8080          protocol: TCP
+              containerPort: 8080
+              protocol: TCP
           env:
             {{- toYaml .Values.backend.env | nindent 12 }}
           resources:
-            {{- toYaml .Values.backend.resources | nindent 12}
+            {{- toYaml .Values.backend.resources | nindent 12 }}
           {{- if .Values.probes.livenessProbe }}
           livenessProbe:
-            {{- toYaml .Values.probes.livenessProbe | nindent 12
+            {{- toYaml .Values.probes.livenessProbe | nindent 12 }}
           {{- end }}
           {{- if .Values.probes.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.probes.readinessProbe | nindent 12
+            {{- toYaml .Values.probes.readinessProbe | nindent 12 }}
           {{- end }}
-          volumeMounts:
-            - name: config
-              mountPath: /etc/mimir-insights
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: {{ include "mimir-insights.fullname" . }}-config
       {{- with .Values.nodeSelector }}
       nodeSelector:
-      [object Object]{- toYaml . | nindent 8
-    [object Object][object Object]- end }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.affinity }}
       affinity:
-      [object Object]{- toYaml . | nindent 8
-    [object Object][object Object]- end }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
-      [object Object]{- toYaml . | nindent 8
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- if .Values.frontend.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mimir-insights.fullname" . }}-frontend
+  namespace: {{ include "mimir-insights.namespace" . }}
+  labels:
+    {{- include "mimir-insights.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mimir-insights.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "mimir-insights.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "mimir-insights.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}-frontend
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.imageRegistry }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }} 

@@ -8,7 +8,7 @@ backend:
   image:
     repository: mimir-insights-backend
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   replicaCount: 2
   resources:
     requests:
@@ -23,17 +23,17 @@ backend:
     targetPort: 8080
   env:
     - name: MIMIR_NAMESPACE
-      value: mimir
+      value: mimir-test
     - name: MIMIR_API_URL
-      value: http://mimir-distributor:9090
+      value: http://mimir-distributor.mimir-test:9090
     - name: LOG_LEVEL
       value: info
     - name: K8S_IN_CLUSTER
       value: "true"
   config:
     mimir:
-      namespace: mimir
-      api_url: http://mimir-distributor:9090
+      namespace: mimir-test
+      api_url: http://mimir-distributor.mimir-test:9090
       timeout: 30
     k8s:
       in_cluster: true
@@ -56,7 +56,7 @@ frontend:
   image:
     repository: mimir-insights-frontend
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   replicaCount: 2
   resources:
     requests:
@@ -76,13 +76,16 @@ ingress:
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
   hosts:
-    - host: insights.example.com
+    - host: mimir-insights.local
       paths:
         - path: /
           pathType: Prefix
+          service: frontend
         - path: /api
           pathType: Prefix
+          service: backend
   tls: []
 
 rbac:
