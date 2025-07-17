@@ -3,6 +3,7 @@
 # Variables
 APP_NAME := mimir-insights
 VERSION := $(shell git describe --tags --always --dirty)
+TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
 REGISTRY := ghcr.io/akshaydubey29NAMESPACE := mimir-insights
 
 # Go variables
@@ -24,7 +25,7 @@ HELM_INSTALL := $(HELM) install
 HELM_UPGRADE := $(HELM) upgrade
 HELM_UNINSTALL := $(HELM) uninstall
 
-.PHONY: all build test clean deps lint docker-build docker-push helm-install helm-upgrade helm-uninstall help
+.PHONY: all build test clean deps lint docker-build docker-push docker-tag helm-install helm-upgrade helm-uninstall help
 
 # Default target
 all: clean deps test build
@@ -61,37 +62,46 @@ lint:
 	golangci-lint run
 	@echoLinting complete!"
 
-# Build Docker images
+# Build Docker images with timestamp tags
 docker-build:
-	@echo "Building Docker images...	$(DOCKER_BUILD) -f Dockerfile.backend -t $(REGISTRY)/$(APP_NAME)-backend:$(VERSION) .
-	$(DOCKER_BUILD) -f Dockerfile.frontend -t $(REGISTRY)/$(APP_NAME)-ui:$(VERSION) .
+	@echo "Building Docker images with timestamp $(TIMESTAMP)...	$(DOCKER_BUILD) -f Dockerfile.backend -t $(REGISTRY)/$(APP_NAME)-backend:$(TIMESTAMP) .
+	$(DOCKER_BUILD) -f Dockerfile.frontend -t $(REGISTRY)/$(APP_NAME)-ui:$(TIMESTAMP) .
 	@echo "Docker build complete!"
+
+# Tag Docker images with latest
+docker-tag:
+	@echo "Tagging Docker images as latest..."
+	$(DOCKER_TAG) $(REGISTRY)/$(APP_NAME)-backend:$(TIMESTAMP) $(REGISTRY)/$(APP_NAME)-backend:latest
+	$(DOCKER_TAG) $(REGISTRY)/$(APP_NAME)-ui:$(TIMESTAMP) $(REGISTRY)/$(APP_NAME)-ui:latest
+	@echo "Docker tagging complete!"
 
 # Push Docker images
 docker-push:
 	@echo "Pushing Docker images..."
-	$(DOCKER_PUSH) $(REGISTRY)/$(APP_NAME)-backend:$(VERSION)
-	$(DOCKER_PUSH) $(REGISTRY)/$(APP_NAME)-ui:$(VERSION)
+	$(DOCKER_PUSH) $(REGISTRY)/$(APP_NAME)-backend:$(TIMESTAMP)
+	$(DOCKER_PUSH) $(REGISTRY)/$(APP_NAME)-backend:latest
+	$(DOCKER_PUSH) $(REGISTRY)/$(APP_NAME)-ui:$(TIMESTAMP)
+	$(DOCKER_PUSH) $(REGISTRY)/$(APP_NAME)-ui:latest
 	@echo "Docker push complete!"
 
 # Build and push Docker images
-docker: docker-build docker-push
+docker: docker-build docker-tag docker-push
 
 # Install Helm chart
 helm-install:
 	@echo "Installing Helm chart...$(HELM_INSTALL) $(APP_NAME) ./deployments/helm-chart \
 		--namespace $(NAMESPACE) \
 		--create-namespace \
-		--set backend.image.tag=$(VERSION) \
-		--set frontend.image.tag=$(VERSION)
+		--set backend.image.tag=$(TIMESTAMP) \
+		--set frontend.image.tag=$(TIMESTAMP)
 	@echo "Helm install complete!"
 
 # Upgrade Helm chart
 helm-upgrade:
 	@echo "Upgrading Helm chart...$(HELM_UPGRADE) $(APP_NAME) ./deployments/helm-chart \
 		--namespace $(NAMESPACE) \
-		--set backend.image.tag=$(VERSION) \
-		--set frontend.image.tag=$(VERSION)
+		--set backend.image.tag=$(TIMESTAMP) \
+		--set frontend.image.tag=$(TIMESTAMP)
 	@echo "Helm upgrade complete!"
 
 # Uninstall Helm chart
@@ -123,8 +133,8 @@ docs:
 # Security scan
 security-scan:
 	@echoRunning security scan..."
-	trivy image $(REGISTRY)/$(APP_NAME)-backend:$(VERSION)
-	trivy image $(REGISTRY)/$(APP_NAME)-ui:$(VERSION)
+	trivy image $(REGISTRY)/$(APP_NAME)-backend:$(TIMESTAMP)
+	trivy image $(REGISTRY)/$(APP_NAME)-ui:$(TIMESTAMP)
 	@echo "Security scan complete!"
 
 # Format code
@@ -152,7 +162,7 @@ help:
 	@echo  clean          - Clean build artifacts"
 	@echo  deps           - Download dependencies"
 	@echo  lint           - Run linting
-	@echo  docker-build   - Build Docker images	@echo  docker-push    - Push Docker images
+	@echo  docker-build   - Build Docker images	@echo  docker-tag     - Tag Docker images	@echo  docker-push    - Push Docker images
 	@echo  docker         - Build and push Docker images"
 	@echo  helm-install   - Install Helm chart"
 	@echo  helm-upgrade   - Upgrade Helm chart"
