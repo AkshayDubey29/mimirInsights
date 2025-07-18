@@ -143,7 +143,16 @@ frontend:
     port: 80
     targetPort: 80
   env:
-    useMockData: false
+    - name: REACT_APP_API_BASE_URL
+      value: "/api"
+    - name: REACT_APP_ENABLE_MOCK_DATA
+      value: "false"
+    - name: REACT_APP_ENABLE_MONITORING
+      value: "false"
+    - name: REACT_APP_ENABLE_LLM
+      value: "false"
+    - name: LOCAL_DEV
+      value: "false"
 
 ingress:
   enabled: true
@@ -255,7 +264,6 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 1000
   runAsGroup: 1000
-  fsGroup: 1000
 
 podSecurityContext:
   runAsNonRoot: true
