@@ -11,6 +11,6 @@ data:
   config.js: |
     window.APP_CONFIG = {
       apiBaseUrl: 'http://{{ include "mimir-insights.fullname" . }}-backend:{{ .Values.backend.service.port }}',
-      useMockData: {{ .Values.frontend.env.useMockData | default false }}
+      useMockData: {{ .Values.frontend.useMockData | default false }}
     };
 {{- end }} 

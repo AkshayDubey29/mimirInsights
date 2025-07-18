@@ -5,9 +5,9 @@
 backend:
   enabled: true
   image:
-    repository: mimir-insights-backend
-    tag: "fast-1752813464"
-    pullPolicy: Never
+    repository: ghcr.io/akshaydubey29/mimir-insights-backend
+    tag: "latest"
+    pullPolicy: Always
   replicaCount: 2
   resources:
     requests:
@@ -36,9 +36,9 @@ backend:
 frontend:
   enabled: true
   image:
-    repository: mimir-insights-frontend
-    tag: "fast-1752813464"
-    pullPolicy: Never
+    repository: ghcr.io/akshaydubey29/mimir-insights-frontend
+    tag: "latest"
+    pullPolicy: Always
   replicaCount: 2
   resources:
     requests:

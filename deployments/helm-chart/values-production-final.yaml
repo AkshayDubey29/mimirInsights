@@ -1,0 +1,190 @@
+# Production Helm Values for MimirInsights
+# Monitoring and LLM features disabled for production stability
+
+global:
+  namespace: mimir-insights
+  imageRegistry: ghcr.io/akshaydubey29
+
+backend:
+  enabled: true
+  image:
+    repository: mimir-insights-backend
+    tag: latest
+    pullPolicy: Always
+  replicaCount: 2
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  env:
+    LOG_LEVEL: "info"
+    DISCOVERY_INTERVAL: "300"
+    METRICS_ENABLED: "false"
+    LLM_ENABLED: "false"
+  service:
+    type: ClusterIP
+    port: 8080
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+frontend:
+  enabled: true
+  image:
+    repository: mimir-insights-frontend
+    tag: latest
+    pullPolicy: Always
+  replicaCount: 2
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  env:
+    REACT_APP_API_BASE_URL: "/api"
+    REACT_APP_ENABLE_MOCK_DATA: "false"
+    REACT_APP_ENABLE_MONITORING: "false"
+    REACT_APP_ENABLE_LLM: "false"
+  service:
+    type: ClusterIP
+    port: 80
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: mimir-insights.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: mimir-insights-frontend
+            port:
+              number: 80
+        - path: /api
+          pathType: Prefix
+          service:
+            name: mimir-insights-backend
+            port:
+              number: 8080
+  tls:
+    - secretName: mimir-insights-tls
+      hosts:
+        - mimir-insights.yourdomain.com
+
+rbac:
+  enabled: true
+  create: true
+
+serviceAccount:
+  enabled: true
+  create: true
+  name: mimir-insights
+
+hpa:
+  enabled: true
+  backend:
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  frontend:
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+# Monitoring disabled for production
+monitoring:
+  enabled: false
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+
+# LLM features disabled for production
+llm:
+  enabled: false
+  openai:
+    enabled: false
+  anthropic:
+    enabled: false
+
+# Security settings
+security:
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: "30d"
+
+# Network policies
+networkPolicy:
+  enabled: true
+  ingress:
+    enabled: true
+  egress:
+    enabled: true
+    allowedPorts:
+      - 53
+      - 443
+      - 80
+
+# Resource quotas
+resourceQuota:
+  enabled: true
+  limits:
+    requests.cpu: "1"
+    requests.memory: "1Gi"
+    limits.cpu: "2"
+    limits.memory: "2Gi"
+
+# Priority class
+priorityClass:
+  enabled: true
+  value: 1000
+  globalDefault: false
+  description: "High priority for MimirInsights pods" 

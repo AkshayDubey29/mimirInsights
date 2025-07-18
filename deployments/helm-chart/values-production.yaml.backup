@@ -1,0 +1,321 @@
+# Default values for mimir-insights
+
+# Global
+imageRegistry: ghcr.io/akshaydubey29
+
+# Name overrides
+nameOverride: ""
+
+# Namespace configuration
+namespace:
+  create: false
+  name: mimir-insights
+
+# Mimir configuration - Where the actual Mimir deployment is running
+mimir:
+  # Namespace where Mimir is deployed (auto-discovered if empty)
+  namespace: ""
+  # Auto-discovery configuration
+  discovery:
+    # Enable automatic Mimir namespace detection
+    autoDetect: true
+    # Namespace patterns to search for Mimir (regex supported)
+    namespacePatterns:
+      - "mimir.*"
+      - ".*mimir.*"
+      - "cortex.*"
+      - ".*cortex.*"
+      - "observability.*"
+      - "monitoring.*"
+    # Label selectors to identify Mimir namespaces
+    namespaceLabels:
+      - key: "app.kubernetes.io/name"
+        values: ["mimir", "cortex"]
+      - key: "app.kubernetes.io/part-of"
+        values: ["mimir", "cortex", "observability"]
+    # Component discovery patterns
+    componentPatterns:
+      distributor: [".*distributor.*", ".*dist.*"]
+      ingester: [".*ingester.*", ".*ingest.*"]
+      querier: [".*querier.*", ".*query.*", ".*frontend.*"]
+      compactor: [".*compactor.*", ".*compact.*"]
+      ruler: [".*ruler.*", ".*rule.*"]
+      alertmanager: [".*alertmanager.*", ".*alert.*"]
+      store_gateway: [".*store.*gateway.*", ".*gateway.*"]
+    # Service discovery patterns
+    servicePatterns:
+      - "mimir-.*"
+      - "cortex-.*"
+      - ".*-mimir-.*"
+      - ".*-cortex-.*"
+    # ConfigMap patterns
+    configMapPatterns:
+      - ".*mimir.*config.*"
+      - ".*cortex.*config.*"
+      - ".*runtime.*overrides.*"
+      - ".*limits.*config.*"
+  # API configuration
+  api:
+    # Service name pattern for distributor (auto-discovered if empty)
+    distributorService: ""
+    # Default port for Mimir components
+    port: 9090
+    # Timeout for API calls
+    timeout: 30
+    # Paths to try for metrics endpoints
+    metricsPaths:
+      - "/metrics"
+      - "/api/v1/query"
+      - "/prometheus/api/v1/query"
+
+backend:
+  enabled: true
+  image:
+    repository: ghcr.io/akshaydubey29/mimir-insights-backend
+    tag: "20250118-enhanced-workload"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  env:
+    - name: MIMIR_NAMESPACE
+      value: "{{ .Values.mimir.namespace | default \"auto\" }}"
+    - name: MIMIR_API_URL
+      value: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+    - name: LOG_LEVEL
+      value: info
+    - name: K8S_IN_CLUSTER
+      value: "true"
+    - name: MIMIR_AUTO_DISCOVER
+      value: "{{ .Values.mimir.discovery.autoDetect }}"
+  config:
+    mimir:
+      namespace: "{{ .Values.mimir.namespace | default \"auto\" }}"
+      api_url: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+      timeout: "{{ .Values.mimir.api.timeout }}"
+      discovery:
+        auto_detect: "{{ .Values.mimir.discovery.autoDetect }}"
+        namespace_patterns: "{{ .Values.mimir.discovery.namespacePatterns | toJson }}"
+        component_patterns: "{{ .Values.mimir.discovery.componentPatterns | toJson }}"
+        service_patterns: "{{ .Values.mimir.discovery.servicePatterns | toJson }}"
+        config_map_patterns: "{{ .Values.mimir.discovery.configMapPatterns | toJson }}"
+    k8s:
+      in_cluster: true
+      tenant_label: team
+      tenant_prefix: tenant-
+    log:
+      level: info
+      format: json
+    ui:
+      theme: dark
+      refresh_interval: 30
+    llm:
+      enabled: true
+      provider: openai
+      model: gpt-4
+      max_tokens: 1000
+
+frontend:
+  enabled: true
+  image:
+    repository: mimir-insights-frontend
+    tag: 20250718-070712
+    pullPolicy: Never
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 128Mi
+    limits:
+      cpu: 20m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  env:
+    useMockData: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: localhost
+      paths:
+        - path: /
+          pathType: Prefix
+        - path: /api
+          pathType: Prefix
+  tls: []
+
+rbac:
+  create: true
+  rules:
+    # Core Kubernetes resources for auto-discovery
+    - apiGroups: [""]
+      resources: ["namespaces"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["configmaps"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["secrets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["services"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["events"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["persistentvolumeclaims"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["resourcequotas"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["limitranges"]
+      verbs: ["get", "list", "watch"]
+    # Apps resources for component discovery
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["statefulsets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["daemonsets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["replicasets"]
+      verbs: ["get", "list", "watch"]
+    # Extensions for ingress discovery
+    - apiGroups: ["networking.k8s.io"]
+      resources: ["ingresses"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["networking.k8s.io"]
+      resources: ["networkpolicies"]
+      verbs: ["get", "list", "watch"]
+    # Metrics and monitoring
+    - apiGroups: ["metrics.k8s.io"]
+      resources: ["nodes", "pods"]
+      verbs: ["get", "list"]
+    # Custom resources that might be relevant
+    - apiGroups: ["apiextensions.k8s.io"]
+      resources: ["customresourcedefinitions"]
+      verbs: ["get", "list", "watch"]
+    # RBAC discovery for security analysis
+    - apiGroups: ["rbac.authorization.k8s.io"]
+      resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+      verbs: ["get", "list", "watch"]
+    # Storage classes for capacity planning
+    - apiGroups: ["storage.k8s.io"]
+      resources: ["storageclasses"]
+      verbs: ["get", "list", "watch"]
+    # Batch jobs for pipeline discovery
+    - apiGroups: ["batch"]
+      resources: ["jobs", "cronjobs"]
+      verbs: ["get", "list", "watch"]
+
+serviceAccount:
+  create: true
+  name: mimir-insights
+  annotations: {}
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+probes:
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+annotations: {}
+labels: {}
+priorityClassName: ""
+
+networkPolicy:
+  enabled: false
+  ingressRules: []
+  egressRules: []
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    port: metrics
+  prometheusRule:
+    enabled: false
+    rules: []
+
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: 7
+  storage:
+    type: s3
+    bucket: mimir-insights-backups
+    region: us-west-2
+
+features:
+  driftDetection: true
+  capacityPlanning: true
+  llmIntegration: true
+  alloyTuning: true
+  gitopsIntegration: false 
