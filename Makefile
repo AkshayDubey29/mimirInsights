@@ -89,6 +89,23 @@ docker-push:
 # Build and push Docker images
 docker: docker-build docker-tag docker-push
 
+# Multi-architecture build targets
+multi-arch-build:
+	@echo "Building multi-architecture Docker images..."
+	./build-multi-arch.sh
+
+multi-arch-build-local:
+	@echo "Building multi-architecture Docker images for local testing..."
+	./build-multi-arch-local.sh
+
+multi-arch-test:
+	@echo "Testing multi-architecture support..."
+	./test-multi-arch.sh
+
+multi-arch-deploy:
+	@echo "Deploying multi-architecture images..."
+	./deploy-multi-arch.sh
+
 # Install Helm chart
 helm-install:
 	@echo "Installing Helm chart..."
@@ -160,23 +177,29 @@ setup:
 
 # Show help
 help:
-	@echo Available targets:"
-	@echo  build          - Build the application"
-	@echo  test           - Run tests"
-	@echo  clean          - Clean build artifacts"
-	@echo  deps           - Download dependencies"
-	@echo  lint           - Run linting
-	@echo  docker-build   - Build Docker images	@echo  docker-tag     - Tag Docker images	@echo  docker-push    - Push Docker images
-	@echo  docker         - Build and push Docker images"
-	@echo  helm-install   - Install Helm chart"
-	@echo  helm-upgrade   - Upgrade Helm chart"
-	@echo  helm-uninstall - Uninstall Helm chart
-	@echo  deploy         - Deploy to Kubernetes"
-	@echo  run            - Run locally"
-	@echo  dev            - Run with hot reload"
-	@echo  docs           - Generate documentation"
-	@echo  security-scan  - Run security scan"
-	@echo  fmt            - Format code"
-	@echo  check          - Format, lint, and test"
-	@echo  setup          - Setup development environment"
-	@echo  help           - Show this help" 
+	@echo "Available targets:"
+	@echo "  build          - Build the application"
+	@echo "  test           - Run tests"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  deps           - Download dependencies"
+	@echo "  lint           - Run linting"
+	@echo "  docker-build   - Build Docker images"
+	@echo "  docker-tag     - Tag Docker images"
+	@echo "  docker-push    - Push Docker images"
+	@echo "  docker         - Build and push Docker images"
+	@echo "  helm-install   - Install Helm chart"
+	@echo "  helm-upgrade   - Upgrade Helm chart"
+	@echo "  helm-uninstall - Uninstall Helm chart"
+	@echo "  deploy         - Deploy to Kubernetes"
+	@echo "  run            - Run locally"
+	@echo "  dev            - Run with hot reload"
+	@echo "  docs           - Generate documentation"
+	@echo "  security-scan  - Run security scan"
+	@echo "  fmt            - Format code"
+	@echo "  check          - Format, lint, and test"
+	@echo "  setup          - Setup development environment"
+	@echo "  help           - Show this help"
+	@echo "  multi-arch-build      - Build multi-architecture images"
+	@echo "  multi-arch-build-local - Build multi-architecture images for local testing"
+	@echo "  multi-arch-test       - Test multi-architecture support"
+	@echo "  multi-arch-deploy     - Deploy multi-architecture images" 

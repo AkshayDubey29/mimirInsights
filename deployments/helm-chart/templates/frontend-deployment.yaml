@@ -55,6 +55,12 @@ spec:
               mountPath: /usr/share/nginx/html/config.js
               subPath: config.js
               readOnly: true
+            - name: nginx-tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           {{- if .Values.frontend.livenessProbe.enabled }}
@@ -69,6 +75,12 @@ spec:
         - name: frontend-config
           configMap:
             name: {{ include "mimir-insights.fullname" . }}-frontend-config
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

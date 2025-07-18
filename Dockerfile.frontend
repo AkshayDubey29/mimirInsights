@@ -52,14 +52,18 @@ RUN cp -r build/* /usr/share/nginx/html/
 # Copy nginx configuration
 COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
 
-# Create config directory
-RUN mkdir -p /usr/share/nginx/html/config
+# Create config directory and ensure it exists
+RUN mkdir -p /usr/share/nginx/html/config && \
+    chmod 755 /usr/share/nginx/html/config
 
 # Create optimized entrypoint script
 RUN echo '#!/bin/sh' > /start.sh && \
     echo 'set -e' >> /start.sh && \
     echo '' >> /start.sh && \
     echo 'echo "🚀 Starting MimirInsights Frontend..."' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# Ensure config directory exists' >> /start.sh && \
+    echo 'mkdir -p /usr/share/nginx/html/config' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '# Create runtime configuration' >> /start.sh && \
     echo 'cat > /usr/share/nginx/html/config/config.js << EOFCONFIG' >> /start.sh && \

@@ -47,6 +47,10 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(api.CORSMiddleware())
 
+	// Health check endpoints for Kubernetes
+	router.GET("/ready", server.HealthCheck)
+	router.GET("/healthz", server.HealthCheck)
+
 	// API routes
 	apiGroup := router.Group("/api")
 	{
