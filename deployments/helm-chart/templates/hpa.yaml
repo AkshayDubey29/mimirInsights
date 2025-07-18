@@ -1,10 +1,12 @@
-[object Object]{- if .Values.hpa.enabled }}
-apiVersion: autoscaling/v2ind: HorizontalPodAutoscaler
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "mimir-insights.fullname" . }}-backend
-  namespace: {{ includemimir-insights.namespace" . }}
+  namespace: {{ include "mimir-insights.namespace" . }}
   labels:
-    {{- includemimir-insights.labels" . | nindent 4pec:
+    {{- include "mimir-insights.labels" . | nindent 4 }}
+spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -12,20 +14,20 @@ metadata:
   minReplicas: {{ .Values.hpa.minReplicas }}
   maxReplicas: {{ .Values.hpa.maxReplicas }}
   metrics:
-  [object Object]{- if .Values.hpa.targetCPUUtilizationPercentage }}
+    {{- if .Values.hpa.targetCPUUtilizationPercentage }}
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
           averageUtilization: {{ .Values.hpa.targetCPUUtilizationPercentage }}
-  {{- end }}
-  [object Object]{- if .Values.hpa.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.hpa.targetMemoryUtilizationPercentage }}
     - type: Resource
       resource:
         name: memory
         target:
           type: Utilization
           averageUtilization: {{ .Values.hpa.targetMemoryUtilizationPercentage }}
-  {{- end }}
+    {{- end }}
 {{- end }} 

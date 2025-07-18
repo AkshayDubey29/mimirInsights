@@ -1,17 +1,30 @@
+// Declare process for React environment variables
+declare const process: {
+  env: {
+    REACT_APP_API_BASE_URL?: string;
+    REACT_APP_USE_MOCK_DATA?: string;
+    NODE_ENV?: string;
+  };
+};
+
+// Runtime configuration from window.APP_CONFIG (injected by Kubernetes)
+const runtimeConfig = (window as any).APP_CONFIG || {};
+
 export const config = {
   // API base URL - will be different for dev/staging/prod
-  apiBaseUrl: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080',
+  apiBaseUrl: runtimeConfig.apiBaseUrl || process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080',
   // Feature flag for using mock data
-  useMockData: process.env.REACT_APP_USE_MOCK_DATA === 'true',
+  useMockData: runtimeConfig.useMockData || process.env.REACT_APP_USE_MOCK_DATA === 'true',
   // Environment
   environment: process.env.NODE_ENV || 'development',
   // API endpoints
   endpoints: {
-    tenants: '/api/v1/tenants',
-    metrics: '/api/v1/metrics',
-    limits: '/api/v1/limits',
-    configs: '/api/v1/configs',
-    reports: '/api/v1/reports',
+    tenants: '/api/tenants',
+    metrics: '/api/metrics',
+    limits: '/api/limits',
+    configs: '/api/config',
+    reports: '/api/capacity',  // Fixed: Use capacity endpoint for reports
+    audit: '/api/audit',       // Added: Separate audit endpoint
   },
 };
 

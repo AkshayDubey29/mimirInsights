@@ -26,9 +26,35 @@ type ServerConfig struct {
 
 // MimirConfig holds Mimir-specific configuration
 type MimirConfig struct {
-	Namespace string `mapstructure:"namespace"`
-	APIURL    string `mapstructure:"api_url"`
-	Timeout   int    `mapstructure:"timeout"`
+	Namespace string          `mapstructure:"namespace"`
+	APIURL    string          `mapstructure:"api_url"`
+	Timeout   int             `mapstructure:"timeout"`
+	Discovery DiscoveryConfig `mapstructure:"discovery"`
+	API       APIConfig       `mapstructure:"api"`
+}
+
+// DiscoveryConfig holds auto-discovery configuration
+type DiscoveryConfig struct {
+	AutoDetect        bool                `mapstructure:"auto_detect"`
+	NamespacePatterns []string            `mapstructure:"namespace_patterns"`
+	NamespaceLabels   []LabelSelector     `mapstructure:"namespace_labels"`
+	ComponentPatterns map[string][]string `mapstructure:"component_patterns"`
+	ServicePatterns   []string            `mapstructure:"service_patterns"`
+	ConfigMapPatterns []string            `mapstructure:"config_map_patterns"`
+}
+
+// LabelSelector represents a label selector for discovery
+type LabelSelector struct {
+	Key    string   `mapstructure:"key"`
+	Values []string `mapstructure:"values"`
+}
+
+// APIConfig holds API-specific configuration
+type APIConfig struct {
+	DistributorService string   `mapstructure:"distributor_service"`
+	Port               int      `mapstructure:"port"`
+	Timeout            int      `mapstructure:"timeout"`
+	MetricsPaths       []string `mapstructure:"metrics_paths"`
 }
 
 // K8sConfig holds Kubernetes-specific configuration
@@ -119,6 +145,31 @@ func setDefaults() {
 	viper.SetDefault("mimir.namespace", "mimir")
 	viper.SetDefault("mimir.api_url", "http://mimir-distributor:9090")
 	viper.SetDefault("mimir.timeout", 30)
+
+	// Mimir Discovery defaults
+	viper.SetDefault("mimir.discovery.auto_detect", true)
+	viper.SetDefault("mimir.discovery.namespace_patterns", []string{
+		"mimir.*", ".*mimir.*", "cortex.*", ".*cortex.*", "observability.*", "monitoring.*",
+	})
+	viper.SetDefault("mimir.discovery.component_patterns.distributor", []string{".*distributor.*", ".*dist.*"})
+	viper.SetDefault("mimir.discovery.component_patterns.ingester", []string{".*ingester.*", ".*ingest.*"})
+	viper.SetDefault("mimir.discovery.component_patterns.querier", []string{".*querier.*", ".*query.*", ".*frontend.*"})
+	viper.SetDefault("mimir.discovery.component_patterns.compactor", []string{".*compactor.*", ".*compact.*"})
+	viper.SetDefault("mimir.discovery.component_patterns.ruler", []string{".*ruler.*", ".*rule.*"})
+	viper.SetDefault("mimir.discovery.component_patterns.alertmanager", []string{".*alertmanager.*", ".*alert.*"})
+	viper.SetDefault("mimir.discovery.component_patterns.store_gateway", []string{".*store.*gateway.*", ".*gateway.*"})
+	viper.SetDefault("mimir.discovery.service_patterns", []string{
+		"mimir-.*", "cortex-.*", ".*-mimir-.*", ".*-cortex-.*",
+	})
+	viper.SetDefault("mimir.discovery.config_map_patterns", []string{
+		".*mimir.*config.*", ".*cortex.*config.*", ".*runtime.*overrides.*", ".*limits.*config.*",
+	})
+
+	// Mimir API defaults
+	viper.SetDefault("mimir.api.distributor_service", "")
+	viper.SetDefault("mimir.api.port", 9090)
+	viper.SetDefault("mimir.api.timeout", 30)
+	viper.SetDefault("mimir.api.metrics_paths", []string{"/metrics", "/api/v1/query", "/prometheus/api/v1/query"})
 
 	// K8s defaults
 	viper.SetDefault("k8s.in_cluster", true)

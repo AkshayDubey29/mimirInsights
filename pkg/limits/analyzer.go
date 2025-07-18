@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/akshaydubey29/mimirInsights/pkg/config"
+	"github.com/akshaydubey29/mimirInsights/pkg/k8s"
 	"github.com/akshaydubey29/mimirInsights/pkg/metrics"
 	"github.com/sirupsen/logrus"
 )
@@ -15,6 +16,7 @@ import (
 type Analyzer struct {
 	metricsClient *metrics.Client
 	config        *config.Config
+	autoDiscovery *AutoDiscovery
 }
 
 // LimitRecommendation represents a recommended limit value
@@ -60,9 +62,15 @@ const (
 
 // NewAnalyzer creates a new limits analyzer
 func NewAnalyzer(metricsClient *metrics.Client) *Analyzer {
+	k8sClient, err := k8s.NewClient()
+	if err != nil {
+		logrus.Fatalf("Failed to create k8s client for analyzer: %v", err)
+	}
+
 	return &Analyzer{
 		metricsClient: metricsClient,
 		config:        config.Get(),
+		autoDiscovery: NewAutoDiscovery(k8sClient),
 	}
 }
 
@@ -397,14 +405,55 @@ func (a *Analyzer) getLimitTypes() []LimitType {
 
 // getCurrentTenantConfig gets the current configuration for a tenant
 func (a *Analyzer) getCurrentTenantConfig(ctx context.Context, tenantName string) (map[string]interface{}, error) {
-	// TODO: Implement actual config retrieval from K8s ConfigMaps
-	// For now, return a mock configuration
-	return map[string]interface{}{
-		"max_global_series_per_user": 5000000,
-		"max_label_names_per_series": 30,
-		"ingestion_rate":             10000,
-		"ingestion_burst_size":       2000,
-	}, nil
+	// Use auto-discovery to get actual tenant configuration
+	discovered, err := a.autoDiscovery.DiscoverAllLimits(ctx, a.config.Mimir.Namespace)
+	if err != nil {
+		logrus.Warnf("Failed to auto-discover limits, falling back to empty config: %v", err)
+		return make(map[string]interface{}), nil
+	}
+
+	// Start with global limits as defaults
+	config := make(map[string]interface{})
+	for key, value := range discovered.GlobalLimits {
+		config[key] = value
+	}
+
+	// Override with tenant-specific limits if they exist
+	if tenantLimit, exists := discovered.TenantLimits[tenantName]; exists {
+		for key, value := range tenantLimit.Limits {
+			config[key] = value
+		}
+		logrus.Infof("Found tenant-specific limits for %s from source: %s", tenantName, tenantLimit.Source)
+	}
+
+	// If no tenant-specific config found, try alternative tenant identifiers
+	if len(config) == 0 {
+		// Try with different naming patterns
+		alternativeNames := []string{
+			fmt.Sprintf("tenant-%s", tenantName),
+			fmt.Sprintf("%s-tenant", tenantName),
+			strings.ToLower(tenantName),
+			strings.ToUpper(tenantName),
+		}
+
+		for _, altName := range alternativeNames {
+			if tenantLimit, exists := discovered.TenantLimits[altName]; exists {
+				for key, value := range tenantLimit.Limits {
+					config[key] = value
+				}
+				logrus.Infof("Found tenant limits for %s using alternative name %s", tenantName, altName)
+				break
+			}
+		}
+	}
+
+	// If still no configuration found, return global limits only
+	if len(config) == 0 {
+		logrus.Warnf("No specific configuration found for tenant %s, using global limits only", tenantName)
+		config = discovered.GlobalLimits
+	}
+
+	return config, nil
 }
 
 // GetTenantLimitsSummary gets a summary of limits for all tenants

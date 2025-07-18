@@ -1,0 +1,55 @@
+# Frontend container with localhost development support
+FROM nginx:1.26-alpine
+
+# Add wget for health checks
+RUN apk add --no-cache wget
+
+# Copy frontend build
+COPY web-ui/build /usr/share/nginx/html
+
+# Copy nginx config
+COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Create directories and set permissions
+RUN mkdir -p /tmp/config \
+    /var/cache/nginx/client_temp \
+    /var/cache/nginx/proxy_temp \
+    /var/cache/nginx/fastcgi_temp \
+    /var/cache/nginx/uwsgi_temp \
+    /var/cache/nginx/scgi_temp \
+    /var/log/nginx \
+    /var/run/nginx \
+    && chmod -R 755 /usr/share/nginx/html \
+    && chmod -R 777 /var/cache/nginx \
+    && chmod -R 777 /var/log/nginx \
+    && chmod -R 777 /var/run \
+    && chmod -R 777 /tmp/config
+
+# Create startup script that handles dynamic config
+RUN echo '#!/bin/sh' > /start.sh && \
+    echo 'echo "🚀 Starting MimirInsights Frontend..."' >> /start.sh && \
+    echo '# Determine API base URL based on environment' >> /start.sh && \
+    echo 'if [ -n "$LOCAL_DEV" ]; then' >> /start.sh && \
+    echo '  API_BASE_URL="http://localhost:8080"' >> /start.sh && \
+    echo 'else' >> /start.sh && \
+    echo '  API_BASE_URL="${API_BASE_URL:-http://mimir-insights-backend:8080}"' >> /start.sh && \
+    echo 'fi' >> /start.sh && \
+    echo 'cat > /tmp/config/dynamic-config.js << EOF' >> /start.sh && \
+    echo 'window.APP_CONFIG = {' >> /start.sh && \
+    echo '  apiBaseUrl: "$API_BASE_URL",' >> /start.sh && \
+    echo '  environment: "production",' >> /start.sh && \
+    echo '  version: "1.0.0",' >> /start.sh && \
+    echo '  useMockData: false' >> /start.sh && \
+    echo '};' >> /start.sh && \
+    echo 'EOF' >> /start.sh && \
+    echo 'echo "✅ Configuration created with API: $API_BASE_URL"' >> /start.sh && \
+    echo 'exec nginx -g "daemon off;"' >> /start.sh && \
+    chmod +x /start.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+
+EXPOSE 80
+
+ENTRYPOINT ["/start.sh"] 

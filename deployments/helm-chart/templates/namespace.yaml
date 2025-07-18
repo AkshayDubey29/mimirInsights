@@ -1,8 +1,9 @@
 {{- if .Values.namespace.create }}
-apiVersion: v1Namespace
+apiVersion: v1
+kind: Namespace
 metadata:
   name: {{ .Values.namespace.name }}
   labels:
-    {{- includemimir-insights.labels" . | nindent 4 }}
+    {{- include "mimir-insights.labels" . | nindent 4 }}
     app.kubernetes.io/component: namespace
 {{- end }} 

@@ -1,0 +1,42 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mimir-insights.fullname" . }}-config
+  namespace: {{ include "mimir-insights.namespace" . }}
+  labels:
+    {{- include "mimir-insights.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    k8s:
+      in_cluster: {{ .Values.backend.config.k8s.in_cluster }}
+      tenant_label: {{ .Values.backend.config.k8s.tenant_label }}
+      tenant_prefix: {{ .Values.backend.config.k8s.tenant_prefix }}
+    llm:
+      enabled: {{ .Values.backend.config.llm.enabled }}
+      max_tokens: {{ .Values.backend.config.llm.max_tokens }}
+      model: {{ .Values.backend.config.llm.model }}
+      provider: {{ .Values.backend.config.llm.provider }}
+    log:
+      format: {{ .Values.backend.config.log.format }}
+      level: {{ .Values.backend.config.log.level }}
+    mimir:
+      namespace: {{ .Values.mimir.namespace | default "auto" }}
+      api_url: {{ if .Values.mimir.api.distributorService }}{{ .Values.mimir.api.distributorService }}{{ else }}auto{{ end }}
+      timeout: {{ .Values.mimir.api.timeout }}
+      discovery:
+        auto_detect: {{ .Values.mimir.discovery.autoDetect }}
+        namespace_patterns: {{- toYaml .Values.mimir.discovery.namespacePatterns | nindent 10 }}
+        component_patterns: {{- toYaml .Values.mimir.discovery.componentPatterns | nindent 10 }}
+        service_patterns: {{- toYaml .Values.mimir.discovery.servicePatterns | nindent 10 }}
+        config_map_patterns: {{- toYaml .Values.mimir.discovery.configMapPatterns | nindent 10 }}
+        namespace_labels: {{- toYaml .Values.mimir.discovery.namespaceLabels | nindent 10 }}
+      api:
+        distributor_service: {{ .Values.mimir.api.distributorService | default "" }}
+        port: {{ .Values.mimir.api.port }}
+        timeout: {{ .Values.mimir.api.timeout }}
+        metrics_paths: {{- toYaml .Values.mimir.api.metricsPaths | nindent 10 }}
+    ui:
+      refresh_interval: {{ .Values.backend.config.ui.refresh_interval }}
+      theme: {{ .Values.backend.config.ui.theme }}
+{{- end }} 

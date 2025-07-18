@@ -2,7 +2,7 @@
 Expand the name of the chart.
 */}}
 {{- define "mimir-insights.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63trimSuffix "-" }}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -11,29 +11,26 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "mimir-insights.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63trimSuffix "-" }}
-{{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
-{{- if contains $name .Release.Name }}[object Object]{- .Release.Name | trunc 63trimSuffix "-" }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63trimSuffix - }}
-{{- end }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define mimir-insights.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace +  | trunc 63trimSuffix "-" }}
+{{- define "mimir-insights.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-[object Object]{/*
+{{/*
 Common labels
 */}}
-{{- definemimir-insights.labels" -}}
-helm.sh/chart: {{ include mimir-insights.chart" . }}
+{{- define "mimir-insights.labels" -}}
+helm.sh/chart: {{ include "mimir-insights.chart" . }}
 {{ include "mimir-insights.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
@@ -56,14 +53,14 @@ Create the name of the service account to use
 {{- if .Values.serviceAccount.create }}
 {{- default (include "mimir-insights.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
-{{- defaultdefault" .Values.serviceAccount.name }}
+{{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
 Create the namespace name
 */}}
-{{- definemimir-insights.namespace" -}}
+{{- define "mimir-insights.namespace" -}}
 {{- if .Values.namespace.create }}
 {{- .Values.namespace.name }}
 {{- else }}
@@ -74,11 +71,13 @@ Create the namespace name
 {{/*
 Create the image name
 */}}
-{{- define "mimir-insights.image" -}}[object Object][object Object]- printf %s/%s:%s" .Values.global.imageRegistry .Values.backend.image.repository .Values.backend.image.tag }}
+{{- define "mimir-insights.image" -}}
+{{- printf "%s/%s:%s" .Values.imageRegistry .Values.backend.image.repository .Values.backend.image.tag }}
 {{- end }}
 
 {{/*
 Create the frontend image name
 */}}
-{{- define "mimir-insights.frontendImage" -}}[object Object][object Object]- printf %s/%s:%s" .Values.global.imageRegistry .Values.frontend.image.repository .Values.frontend.image.tag }}
+{{- define "mimir-insights.frontendImage" -}}
+{{- printf "%s/%s:%s" .Values.imageRegistry .Values.frontend.image.repository .Values.frontend.image.tag }}
 {{- end }} 

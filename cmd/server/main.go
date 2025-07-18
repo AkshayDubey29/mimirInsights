@@ -45,19 +45,32 @@ func main() {
 
 	// Add CORS middleware
 	router.Use(gin.Recovery())
+	router.Use(api.CORSMiddleware())
 
 	// API routes
 	apiGroup := router.Group("/api")
 	{
 		apiGroup.GET("/health", server.HealthCheck)
 		apiGroup.GET("/tenants", server.GetTenants)
+		apiGroup.POST("/tenants", server.CreateTenant)
 		apiGroup.GET("/limits", server.GetLimits)
 		apiGroup.GET("/config", server.GetConfig)
+		apiGroup.GET("/environment", server.GetEnvironment)
 		apiGroup.GET("/metrics", server.GetMetrics)
+		apiGroup.GET("/metrics/discovery", server.GetAutoDiscoveredMetrics)
 		apiGroup.GET("/audit", server.GetAuditLogs)
 		apiGroup.POST("/analyze", server.AnalyzeTenant)
 		apiGroup.GET("/drift", server.GetDriftStatus)
+		apiGroup.POST("/drift/baseline", server.CreateDriftBaseline)
+		apiGroup.GET("/alloy/deployments", server.GetAlloyDeployments)
+		apiGroup.GET("/alloy/workloads", server.GetAlloyWorkloads)
+		apiGroup.POST("/alloy/scale", server.ScaleAlloyReplicas)
+		apiGroup.GET("/alloy/recommendations", server.GetAlloyScalingRecommendations)
 		apiGroup.GET("/capacity", server.GetCapacityReport)
+		apiGroup.GET("/capacity/export", server.ExportCapacityReport)
+		apiGroup.GET("/capacity/trends", server.GetCapacityTrends)
+		apiGroup.POST("/llm/query", server.ProcessLLMQuery)
+		apiGroup.GET("/llm/capabilities", server.GetLLMCapabilities)
 	}
 
 	// Serve static files for UI

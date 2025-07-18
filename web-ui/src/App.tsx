@@ -5,13 +5,14 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
 import { QueryClient, QueryClientProvider } from 'react-query';
 
-// Placeholder components (replace with actual imports when available)
-const Layout = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
-const Dashboard = () => <div>Dashboard</div>;
-const Tenants = () => <div>Tenants</div>;
-const Limits = () => <div>Limits</div>;
-const Config = () => <div>Config</div>;
-const Reports = () => <div>Reports</div>;
+// Import actual components
+import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
+import Tenants from './pages/Tenants';
+import Limits from './pages/Limits';
+import Config from './pages/Config';
+import Reports from './pages/Reports';
+import EnvironmentStatus from './components/EnvironmentStatus';
 
 const darkTheme = createTheme({
   palette: {
@@ -56,6 +57,7 @@ function App() {
                 <Route path="/limits" element={<Limits />} />
                 <Route path="/config" element={<Config />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/environment-status" element={<EnvironmentStatus />} />
               </Routes>
             </Layout>
           </Box>

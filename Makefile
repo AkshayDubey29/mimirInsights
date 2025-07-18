@@ -4,7 +4,8 @@
 APP_NAME := mimir-insights
 VERSION := $(shell git describe --tags --always --dirty)
 TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
-REGISTRY := ghcr.io/akshaydubey29NAMESPACE := mimir-insights
+REGISTRY := ghcr.io/akshaydubey29
+NAMESPACE := mimir-insights
 
 # Go variables
 GOCMD := go
@@ -64,7 +65,8 @@ lint:
 
 # Build Docker images with timestamp tags
 docker-build:
-	@echo "Building Docker images with timestamp $(TIMESTAMP)...	$(DOCKER_BUILD) -f Dockerfile.backend -t $(REGISTRY)/$(APP_NAME)-backend:$(TIMESTAMP) .
+	@echo "Building Docker images with timestamp $(TIMESTAMP)..."
+	$(DOCKER_BUILD) -f Dockerfile.backend -t $(REGISTRY)/$(APP_NAME)-backend:$(TIMESTAMP) .
 	$(DOCKER_BUILD) -f Dockerfile.frontend -t $(REGISTRY)/$(APP_NAME)-ui:$(TIMESTAMP) .
 	@echo "Docker build complete!"
 
@@ -89,7 +91,8 @@ docker: docker-build docker-tag docker-push
 
 # Install Helm chart
 helm-install:
-	@echo "Installing Helm chart...$(HELM_INSTALL) $(APP_NAME) ./deployments/helm-chart \
+	@echo "Installing Helm chart..."
+	$(HELM_INSTALL) $(APP_NAME) ./deployments/helm-chart \
 		--namespace $(NAMESPACE) \
 		--create-namespace \
 		--set backend.image.tag=$(TIMESTAMP) \
@@ -98,7 +101,8 @@ helm-install:
 
 # Upgrade Helm chart
 helm-upgrade:
-	@echo "Upgrading Helm chart...$(HELM_UPGRADE) $(APP_NAME) ./deployments/helm-chart \
+	@echo "Upgrading Helm chart..."
+	$(HELM_UPGRADE) $(APP_NAME) ./deployments/helm-chart \
 		--namespace $(NAMESPACE) \
 		--set backend.image.tag=$(TIMESTAMP) \
 		--set frontend.image.tag=$(TIMESTAMP)
@@ -106,7 +110,7 @@ helm-upgrade:
 
 # Uninstall Helm chart
 helm-uninstall:
-	@echo Uninstalling Helm chart..."
+	@echo "Uninstalling Helm chart..."
 	$(HELM_UNINSTALL) $(APP_NAME) --namespace $(NAMESPACE)
 	@echo "Helm uninstall complete!"
 
