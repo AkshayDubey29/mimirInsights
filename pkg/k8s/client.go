@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	github.com/akshaydubey29/mimirInsights/pkg/config"
-	github.com/sirupsen/logrus"
+
+	"github.com/akshaydubey29/mimirInsights/pkg/config"
+	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	k8s.io/client-go/rest"
-	k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // Client wraps the Kubernetes client with additional functionality
@@ -24,7 +27,7 @@ type Client struct {
 // NewClient creates a new Kubernetes client
 func NewClient() (*Client, error) {
 	cfg := config.Get()
-	
+
 	var k8sConfig *rest.Config
 	var err error
 
@@ -58,7 +61,7 @@ func NewClient() (*Client, error) {
 	}
 
 	logrus.Info("Kubernetes client initialized successfully")
-	
+
 	return &Client{
 		clientset: clientset,
 		config:    cfg,
@@ -73,6 +76,16 @@ func (c *Client) GetDeployments(ctx context.Context, namespace string, opts meta
 // GetStatefulSets retrieves statefulsets from a namespace
 func (c *Client) GetStatefulSets(ctx context.Context, namespace string, opts metav1.ListOptions) (*appsv1.StatefulSetList, error) {
 	return c.clientset.AppsV1().StatefulSets(namespace).List(ctx, opts)
+}
+
+// GetDaemonSets retrieves daemonsets from a namespace
+func (c *Client) GetDaemonSets(ctx context.Context, namespace string, opts metav1.ListOptions) (*appsv1.DaemonSetList, error) {
+	return c.clientset.AppsV1().DaemonSets(namespace).List(ctx, opts)
+}
+
+// GetReplicaSets retrieves replicasets from a namespace
+func (c *Client) GetReplicaSets(ctx context.Context, namespace string, opts metav1.ListOptions) (*appsv1.ReplicaSetList, error) {
+	return c.clientset.AppsV1().ReplicaSets(namespace).List(ctx, opts)
 }
 
 // GetNamespaces retrieves all namespaces
@@ -110,6 +123,16 @@ func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string, opt
 	return c.clientset.AppsV1().StatefulSets(namespace).Get(ctx, name, opts)
 }
 
+// GetDaemonSet retrieves a specific daemonset
+func (c *Client) GetDaemonSet(ctx context.Context, namespace, name string, opts metav1.GetOptions) (*appsv1.DaemonSet, error) {
+	return c.clientset.AppsV1().DaemonSets(namespace).Get(ctx, name, opts)
+}
+
+// GetReplicaSet retrieves a specific replicaset
+func (c *Client) GetReplicaSet(ctx context.Context, namespace, name string, opts metav1.GetOptions) (*appsv1.ReplicaSet, error) {
+	return c.clientset.AppsV1().ReplicaSets(namespace).Get(ctx, name, opts)
+}
+
 // GetConfigMap retrieves a specific configmap
 func (c *Client) GetConfigMap(ctx context.Context, namespace, name string, opts metav1.GetOptions) (*corev1.ConfigMap, error) {
 	return c.clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, opts)
@@ -125,23 +148,33 @@ func (c *Client) UpdateStatefulSet(ctx context.Context, namespace string, statef
 	return c.clientset.AppsV1().StatefulSets(namespace).Update(ctx, statefulSet, opts)
 }
 
+// UpdateDaemonSet updates a daemonset
+func (c *Client) UpdateDaemonSet(ctx context.Context, namespace string, daemonSet *appsv1.DaemonSet, opts metav1.UpdateOptions) (*appsv1.DaemonSet, error) {
+	return c.clientset.AppsV1().DaemonSets(namespace).Update(ctx, daemonSet, opts)
+}
+
 // UpdateConfigMap updates a configmap
 func (c *Client) UpdateConfigMap(ctx context.Context, namespace string, configMap *corev1.ConfigMap, opts metav1.UpdateOptions) (*corev1.ConfigMap, error) {
 	return c.clientset.CoreV1().ConfigMaps(namespace).Update(ctx, configMap, opts)
 }
 
 // PatchDeployment patches a deployment
-func (c *Client) PatchDeployment(ctx context.Context, namespace, name string, pt string, data []byte, opts metav1.PatchOptions) (*appsv1.Deployment, error) {
+func (c *Client) PatchDeployment(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*appsv1.Deployment, error) {
 	return c.clientset.AppsV1().Deployments(namespace).Patch(ctx, name, pt, data, opts)
 }
 
 // PatchStatefulSet patches a statefulset
-func (c *Client) PatchStatefulSet(ctx context.Context, namespace, name string, pt string, data []byte, opts metav1.PatchOptions) (*appsv1.StatefulSet, error) {
+func (c *Client) PatchStatefulSet(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*appsv1.StatefulSet, error) {
 	return c.clientset.AppsV1().StatefulSets(namespace).Patch(ctx, name, pt, data, opts)
 }
 
+// PatchDaemonSet patches a daemonset
+func (c *Client) PatchDaemonSet(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*appsv1.DaemonSet, error) {
+	return c.clientset.AppsV1().DaemonSets(namespace).Patch(ctx, name, pt, data, opts)
+}
+
 // PatchConfigMap patches a configmap
-func (c *Client) PatchConfigMap(ctx context.Context, namespace, name string, pt string, data []byte, opts metav1.PatchOptions) (*corev1.ConfigMap, error) {
+func (c *Client) PatchConfigMap(ctx context.Context, namespace, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*corev1.ConfigMap, error) {
 	return c.clientset.CoreV1().ConfigMaps(namespace).Patch(ctx, name, pt, data, opts)
 }
 
@@ -220,4 +253,9 @@ func (c *Client) GetClusterInfo(ctx context.Context) (map[string]interface{}, er
 	info["namespaceCount"] = len(namespaces.Items)
 
 	return info, nil
-} 
+}
+
+// GetIngresses gets Ingresses in a namespace
+func (c *Client) GetIngresses(ctx context.Context, namespace string, opts metav1.ListOptions) (*networkingv1.IngressList, error) {
+	return c.clientset.NetworkingV1().Ingresses(namespace).List(ctx, opts)
+}

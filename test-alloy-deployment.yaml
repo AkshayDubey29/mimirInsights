@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy-deployment
+  namespace: test-alloy-statefulset
+  labels:
+    app: alloy
+    component: monitoring
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      containers:
+      - name: alloy
+        image: grafana/alloy:v1.1.0
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

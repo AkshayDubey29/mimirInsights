@@ -2,8 +2,18 @@ import { useState, useEffect } from 'react';
 import { limits as mockLimits } from '../mocks/limits';
 import { config } from '../config/environment';
 
+interface LimitData {
+  tenant: string;
+  cpuRequest: number;
+  cpuLimit: number;
+  memoryRequest: number;
+  memoryLimit: number;
+  recommendedCpu: number;
+  recommendedMemory: number;
+}
+
 export function useLimits() {
-  const [data, setData] = useState([]);
+  const [data, setData] = useState<LimitData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

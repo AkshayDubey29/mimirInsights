@@ -1,0 +1,564 @@
+# Production Values for MimirInsights
+# This configuration is optimized for production deployments with enhanced workload discovery,
+# comprehensive monitoring, security hardening, and all advanced features enabled.
+
+# Global Configuration
+imageRegistry: ghcr.io/akshaydubey29
+environment: production
+
+# Name overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# Namespace configuration
+namespace:
+  create: true
+  name: mimir-insights
+  annotations:
+    kubernetes.io/managed-by: "helm"
+    app.kubernetes.io/managed-by: "mimir-insights"
+  labels:
+    environment: production
+    app.kubernetes.io/name: mimir-insights
+    app.kubernetes.io/part-of: observability
+
+# Mimir Configuration - Enhanced for Production
+mimir:
+  # Namespace where Mimir is deployed (will auto-discover if empty)
+  namespace: ""
+  # Enhanced auto-discovery configuration
+  discovery:
+    # Enable automatic Mimir namespace detection
+    autoDetect: true
+    # Extended namespace patterns for production environments
+    namespacePatterns:
+      - "mimir.*"
+      - ".*mimir.*"
+      - "cortex.*"
+      - ".*cortex.*"
+      - "observability.*"
+      - "monitoring.*"
+      - "metrics.*"
+      - "prometheus.*"
+      - "grafana.*"
+    # Enhanced label selectors for production
+    namespaceLabels:
+      - key: "app.kubernetes.io/name"
+        values: ["mimir", "cortex", "prometheus", "grafana"]
+      - key: "app.kubernetes.io/part-of"
+        values: ["mimir", "cortex", "observability", "monitoring"]
+      - key: "environment"
+        values: ["production", "prod", "staging"]
+    # Comprehensive component discovery patterns
+    componentPatterns:
+      distributor: [".*distributor.*", ".*dist.*", ".*ingress.*"]
+      ingester: [".*ingester.*", ".*ingest.*", ".*storage.*"]
+      querier: [".*querier.*", ".*query.*", ".*frontend.*", ".*read.*"]
+      compactor: [".*compactor.*", ".*compact.*", ".*maintenance.*"]
+      ruler: [".*ruler.*", ".*rule.*", ".*alerting.*"]
+      alertmanager: [".*alertmanager.*", ".*alert.*", ".*notification.*"]
+      store_gateway: [".*store.*gateway.*", ".*gateway.*", ".*read.*gateway.*"]
+    # Enhanced service discovery patterns
+    servicePatterns:
+      - "mimir-.*"
+      - "cortex-.*"
+      - ".*-mimir-.*"
+      - ".*-cortex-.*"
+      - "prometheus-.*"
+      - "grafana-.*"
+    # Comprehensive ConfigMap patterns
+    configMapPatterns:
+      - ".*mimir.*config.*"
+      - ".*cortex.*config.*"
+      - ".*runtime.*overrides.*"
+      - ".*limits.*config.*"
+      - ".*prometheus.*config.*"
+      - ".*overrides.*"
+  # API configuration optimized for production
+  api:
+    distributorService: ""
+    port: 9090
+    timeout: 60  # Increased for production
+    retries: 3
+    metricsPaths:
+      - "/metrics"
+      - "/api/v1/query"
+      - "/prometheus/api/v1/query"
+      - "/api/v1/query_range"
+
+# Backend Configuration - Production Optimized
+backend:
+  enabled: true
+  image:
+    repository: ghcr.io/akshaydubey29/mimir-insights-backend
+    tag: "20250118-enhanced-workload"  # Latest enhanced workload discovery
+    pullPolicy: IfNotPresent
+  replicaCount: 2  # HA deployment
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
+  env:
+    - name: ENVIRONMENT
+      value: "production"
+    - name: MIMIR_NAMESPACE
+      value: "{{ .Values.mimir.namespace | default \"auto\" }}"
+    - name: MIMIR_API_URL
+      value: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+    - name: LOG_LEVEL
+      value: info
+    - name: K8S_IN_CLUSTER
+      value: "true"
+    - name: MIMIR_AUTO_DISCOVER
+      value: "{{ .Values.mimir.discovery.autoDetect }}"
+    - name: DRIFT_DETECTION_ENABLED
+      value: "true"
+    - name: CAPACITY_PLANNING_ENABLED
+      value: "true"
+    - name: LLM_INTEGRATION_ENABLED
+      value: "true"
+    - name: ALLOY_TUNING_ENABLED
+      value: "true"
+    - name: MONITORING_ENABLED
+      value: "true"
+    - name: METRICS_RETENTION_DAYS
+      value: "30"
+  config:
+    mimir:
+      namespace: "{{ .Values.mimir.namespace | default \"auto\" }}"
+      api_url: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+      timeout: "{{ .Values.mimir.api.timeout }}"
+      discovery:
+        auto_detect: "{{ .Values.mimir.discovery.autoDetect }}"
+        namespace_patterns: "{{ .Values.mimir.discovery.namespacePatterns | toJson }}"
+        component_patterns: "{{ .Values.mimir.discovery.componentPatterns | toJson }}"
+        service_patterns: "{{ .Values.mimir.discovery.servicePatterns | toJson }}"
+        config_map_patterns: "{{ .Values.mimir.discovery.configMapPatterns | toJson }}"
+    k8s:
+      in_cluster: true
+      tenant_label: team
+      tenant_prefix: tenant-
+      cluster_name: "{{ .Values.cluster.name | default \"production\" }}"
+    log:
+      level: info
+      format: json
+      enable_audit: true
+    ui:
+      theme: dark
+      refresh_interval: 30
+      enable_debug: false
+    llm:
+      enabled: true
+      provider: "{{ .Values.llm.provider | default \"openai\" }}"
+      model: "{{ .Values.llm.model | default \"gpt-4\" }}"
+      max_tokens: 2000
+      temperature: 0.1
+    monitoring:
+      enabled: true
+      metrics_port: 8080
+      health_check_interval: 30
+      alert_manager_url: "{{ .Values.monitoring.alertManagerUrl | default \"\" }}"
+    security:
+      enable_auth: true
+      token_expiry: 24h
+      rate_limiting: true
+      audit_logging: true
+
+# Frontend Configuration - Production Optimized
+frontend:
+  enabled: true
+  image:
+    repository: ghcr.io/akshaydubey29/mimir-insights-frontend
+    tag: "20250718-070712"  # Latest stable frontend
+    pullPolicy: IfNotPresent
+  replicaCount: 2  # HA deployment
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  env:
+    - name: ENVIRONMENT
+      value: "production"
+    - name: API_BASE_URL
+      value: "https://{{ .Values.ingress.hosts.0.host }}/api"
+    - name: ENABLE_ANALYTICS
+      value: "true"
+    - name: CACHE_TIMEOUT
+      value: "300"
+    useMockData: false
+
+# Ingress Configuration - Production with SSL
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: mimir-insights.yourdomain.com  # Update with your domain
+      paths:
+        - path: /
+          pathType: Prefix
+        - path: /api
+          pathType: Prefix
+  tls:
+    - secretName: mimir-insights-tls
+      hosts:
+        - mimir-insights.yourdomain.com  # Update with your domain
+
+# RBAC Configuration - Enhanced for Production
+rbac:
+  create: true
+  rules:
+    # Core Kubernetes resources for enhanced auto-discovery
+    - apiGroups: [""]
+      resources: ["namespaces"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["configmaps"]
+      verbs: ["get", "list", "watch", "patch"]  # Added patch for drift detection
+    - apiGroups: [""]
+      resources: ["secrets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["services"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["events"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["persistentvolumeclaims"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["resourcequotas"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["limitranges"]
+      verbs: ["get", "list", "watch"]
+    # Enhanced Apps resources for comprehensive workload discovery
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      verbs: ["get", "list", "watch", "patch"]  # Added patch for Alloy tuning
+    - apiGroups: ["apps"]
+      resources: ["statefulsets"]
+      verbs: ["get", "list", "watch", "patch"]  # Enhanced workload discovery
+    - apiGroups: ["apps"]
+      resources: ["daemonsets"]
+      verbs: ["get", "list", "watch", "patch"]  # Enhanced workload discovery
+    - apiGroups: ["apps"]
+      resources: ["replicasets"]
+      verbs: ["get", "list", "watch"]
+    # Networking resources
+    - apiGroups: ["networking.k8s.io"]
+      resources: ["ingresses"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["networking.k8s.io"]
+      resources: ["networkpolicies"]
+      verbs: ["get", "list", "watch"]
+    # Metrics and monitoring
+    - apiGroups: ["metrics.k8s.io"]
+      resources: ["nodes", "pods"]
+      verbs: ["get", "list"]
+    # Custom resources
+    - apiGroups: ["apiextensions.k8s.io"]
+      resources: ["customresourcedefinitions"]
+      verbs: ["get", "list", "watch"]
+    # RBAC discovery
+    - apiGroups: ["rbac.authorization.k8s.io"]
+      resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+      verbs: ["get", "list", "watch"]
+    # Storage resources
+    - apiGroups: ["storage.k8s.io"]
+      resources: ["storageclasses"]
+      verbs: ["get", "list", "watch"]
+    # Batch resources
+    - apiGroups: ["batch"]
+      resources: ["jobs", "cronjobs"]
+      verbs: ["get", "list", "watch"]
+
+# Service Account Configuration
+serviceAccount:
+  create: true
+  name: mimir-insights
+  annotations:
+    kubernetes.io/managed-by: "helm"
+  automountServiceAccountToken: true
+
+# HPA Configuration - Production Optimized
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  scaleUpRules:
+    stabilizationWindowSeconds: 60
+    policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+  scaleDownRules:
+    stabilizationWindowSeconds: 300
+    policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+# Pod Disruption Budget
+pdb:
+  enabled: true
+  minAvailable: 1
+  maxUnavailable: 50%
+
+# Security Context - Production Hardened
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Health Probes - Production Optimized
+probes:
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+      scheme: HTTP
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+      scheme: HTTP
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  startupProbe:
+    httpGet:
+      path: /api/health
+      port: 8080
+      scheme: HTTP
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 10
+    successThreshold: 1
+
+# Node Selection and Scheduling
+nodeSelector:
+  kubernetes.io/arch: amd64
+  node-type: compute  # Update based on your node labels
+
+tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - mimir-insights
+          topologyKey: kubernetes.io/hostname
+
+# Pod annotations and labels
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+labels:
+  environment: production
+  version: "v1.0.0"
+  team: platform
+
+priorityClassName: "high-priority"  # Create this priority class
+
+# Network Policy - Production Security
+networkPolicy:
+  enabled: true
+  ingressRules:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 80
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+  egressRules:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443  # HTTPS
+        - protocol: TCP
+          port: 53   # DNS
+        - protocol: UDP
+          port: 53   # DNS
+
+# Monitoring Configuration - Production Ready
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    port: http
+    labels:
+      prometheus: kube-prometheus
+  prometheusRule:
+    enabled: true
+    rules:
+      - alert: MimirInsightsDown
+        expr: up{job="mimir-insights"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MimirInsights is down"
+          description: "MimirInsights has been down for more than 5 minutes"
+      - alert: MimirInsightsHighMemory
+        expr: container_memory_usage_bytes{pod=~"mimir-insights-.*"} / container_spec_memory_limit_bytes > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MimirInsights high memory usage"
+          description: "MimirInsights memory usage is above 80%"
+      - alert: MimirInsightsHighCPU
+        expr: rate(container_cpu_usage_seconds_total{pod=~"mimir-insights-.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MimirInsights high CPU usage"
+          description: "MimirInsights CPU usage is above 80%"
+
+# Backup Configuration - Production Data Protection
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: 30  # 30 days retention
+  storage:
+    type: s3
+    bucket: mimir-insights-backups-prod
+    region: us-west-2
+    endpoint: ""  # Use default AWS S3
+    accessKeySecret: mimir-insights-s3-credentials
+    encryptionKey: mimir-insights-encryption-key
+
+# Feature Flags - All Production Features Enabled
+features:
+  driftDetection: true
+  capacityPlanning: true
+  llmIntegration: true
+  alloyTuning: true
+  enhancedWorkloadDiscovery: true  # NEW: StatefulSets, DaemonSets, ReplicaSets
+  gitopsIntegration: true
+  securityScanning: true
+  auditLogging: true
+  alerting: true
+  multiTenancy: true
+  rateLimiting: true
+
+# External Dependencies Configuration
+llm:
+  provider: openai
+  model: gpt-4
+  apiKeySecret: mimir-insights-llm-credentials
+  maxTokens: 2000
+  temperature: 0.1
+
+cluster:
+  name: production
+  region: us-west-2
+  environment: production
+
+# Volume Configuration for Production
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"  # Use your preferred storage class
+  size: 10Gi
+  accessMode: ReadWriteOnce
+
+# External Secrets Configuration (if using External Secrets Operator)
+externalSecrets:
+  enabled: false  # Set to true if using External Secrets Operator
+  secretStore:
+    name: vault-backend
+    kind: SecretStore
+  refreshInterval: 1h
+
+# Istio Configuration (if using Istio service mesh)
+istio:
+  enabled: false  # Set to true if using Istio
+  virtualService:
+    enabled: false
+  destinationRule:
+    enabled: false
+  gateway:
+    enabled: false 

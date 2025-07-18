@@ -7,8 +7,8 @@
     "@types/node": "^18.15.0",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.0.20",
+    "react-dom": "^18.0.20",
     "react-scripts": "5.0.1",
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4",
@@ -16,19 +16,19 @@
     "@mui/icons-material": "^5.11.0",
     "@emotion/react": "^11.10.5",
     "@emotion/styled": "^11.10.5",
-    "@mui/x-charts": "^5.17.0",
     "@mui/x-data-grid": "^5.17.0",
     "recharts": "^2.5.0",
     "axios": "^1.3.0",
-    "react-router-dom": "6.0.8",
-    "react-query": "^4.0.0",
-    "date-fns": "^2.29.0.3",
+    "react-router-dom": "^6.8.0",
+    "react-query": "^3.39.0",
+    "date-fns": "^2.29.3",
     "lodash": "^4.17.21",
     "clsx": "^1.2.1"
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "DISABLE_ESLINT_PLUGIN=true GENERATE_SOURCEMAP=false react-scripts build",
+    "build:fast": "DISABLE_ESLINT_PLUGIN=true GENERATE_SOURCEMAP=false SKIP_PREFLIGHT_CHECK=true react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -54,4 +54,4 @@
     "@types/lodash": "^4.14.191"
   },
   "proxy": "http://localhost:8080"
-}
+} 

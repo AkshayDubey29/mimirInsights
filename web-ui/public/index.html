@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="MimirInsights - Kubernetes Monitoring and Analytics"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <title>MimirInsights</title>
+    <!-- Runtime configuration with fallback mechanism -->
+    <script>
+      // Try to load dynamic config first, fallback to static config
+      function loadConfig() {
+        var script = document.createElement('script');
+        script.onerror = function() {
+          // Fallback to static config if dynamic config fails
+          var fallback = document.createElement('script');
+          fallback.src = '%PUBLIC_URL%/config.js';
+          document.head.appendChild(fallback);
+        };
+        script.src = '%PUBLIC_URL%/dynamic-config.js';
+        document.head.appendChild(script);
+      }
+      loadConfig();
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html> 

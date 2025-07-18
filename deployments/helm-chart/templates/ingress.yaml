@@ -1,11 +1,11 @@
-{{- if .Values.ingress.enabled -}}
+{{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "mimir-insights.fullname" . }}
-  namespace: {{ include "mimir-insights.namespace" . }}
+  name: {{ include "mimir-insights.fullname" $ }}
+  namespace: {{ include "mimir-insights.namespace" $ }}
   labels:
-    {{- include "mimir-insights.labels" . | nindent 4 }}
+    {{- include "mimir-insights.labels" $ | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -18,9 +18,9 @@ spec:
   tls:
     {{- range .Values.ingress.tls }}
     - hosts:
-        {{- range .hosts }}
+      {{- range .hosts }}
         - {{ . | quote }}
-        {{- end }}
+      {{- end }}
       secretName: {{ .secretName }}
     {{- end }}
   {{- end }}
@@ -29,19 +29,14 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-        - path: /api
-          pathType: Prefix
-          backend:
-            service:
-              name: {{ include "mimir-insights.fullname" $ }}-backend
-              port:
-                number: {{ $.Values.backend.service.port }}
-        - path: /
-          pathType: Prefix
-          backend:
-            service:
-              name: {{ include "mimir-insights.fullname" $ }}-frontend
-              port:
-                number: {{ $.Values.frontend.service.port }}
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ if eq .path "/api" }}{{ include "mimir-insights.fullname" $ }}-backend{{ else }}{{ include "mimir-insights.fullname" $ }}-frontend{{ end }}
+                port:
+                  number: {{ if eq .path "/api" }}{{ $.Values.backend.service.port }}{{ else }}{{ $.Values.frontend.service.port }}{{ end }}
+          {{- end }}
     {{- end }}
 {{- end }} 

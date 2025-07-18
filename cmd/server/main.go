@@ -2,25 +2,20 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	github.com/akshaydubey29/mimirInsights/pkg/api"
-	github.com/akshaydubey29/mimirInsights/pkg/config"
-	github.com/akshaydubey29/mimirInsights/pkg/discovery"
-	"github.com/akshaydubey29/mimirInsights/pkg/drift"
-	"github.com/akshaydubey29/mimirInsights/pkg/k8s"
-	github.com/akshaydubey29/mimirInsights/pkg/limits"
-	"github.com/akshaydubey29/mimirInsights/pkg/llm"
-	github.com/akshaydubey29/mimirInsights/pkg/metrics"
-	"github.com/akshaydubey29/mimirInsights/pkg/planner"
-	github.com/gin-gonic/gin"
-	github.com/sirupsen/logrus"
-	github.com/spf13/viper"
+	"github.com/akshaydubey29/mimirInsights/pkg/api"
+	"github.com/akshaydubey29/mimirInsights/pkg/config"
+	"github.com/akshaydubey29/mimirInsights/pkg/discovery"
+	"github.com/akshaydubey29/mimirInsights/pkg/limits"
+	"github.com/akshaydubey29/mimirInsights/pkg/metrics"
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 func main() {
@@ -37,53 +32,46 @@ func main() {
 
 	logrus.Info("Starting MimirInsights server...")
 
-	// Initialize Kubernetes client
-	k8sClient, err := k8s.NewClient()
-	if err != nil {
-		logrus.Fatalf("Failed to initialize Kubernetes client: %v", err)
-	}
-
 	// Initialize components
-	discoveryEngine := discovery.NewEngine(k8sClient)
+	discoveryEngine := discovery.NewEngine()
 	metricsClient := metrics.NewClient()
 	limitsAnalyzer := limits.NewAnalyzer(metricsClient)
-	driftDetector := drift.NewDetector(k8sClient, discoveryEngine)
-	capacityPlanner := planner.NewPlanner(metricsClient, limitsAnalyzer)
-	llmAssistant := llm.NewAssistant()
 
 	// Create API server
-	server := api.NewServer(discoveryEngine, metricsClient, limitsAnalyzer, driftDetector, capacityPlanner, llmAssistant)
+	server := api.NewServer(discoveryEngine, metricsClient, limitsAnalyzer)
 
 	// Setup Gin router
 	router := gin.Default()
-	
-	// Add middleware
+
+	// Add CORS middleware
 	router.Use(gin.Recovery())
 	router.Use(api.CORSMiddleware())
-	router.Use(api.LoggingMiddleware())
-	
+
 	// API routes
 	apiGroup := router.Group("/api")
+	{
 		apiGroup.GET("/health", server.HealthCheck)
 		apiGroup.GET("/tenants", server.GetTenants)
-		apiGroup.GET("/tenants/:name", server.GetTenant)
-		apiGroup.PUT("/tenants/:name/alloy/replicas", server.UpdateAlloyReplicas)
+		apiGroup.POST("/tenants", server.CreateTenant)
 		apiGroup.GET("/limits", server.GetLimits)
-		apiGroup.GET("/limits/:tenant", server.GetTenantLimits)
-		apiGroup.POST("/limits/:tenant/apply", server.ApplyLimits)
 		apiGroup.GET("/config", server.GetConfig)
+		apiGroup.GET("/environment", server.GetEnvironment)
+		apiGroup.GET("/metrics", server.GetMetrics)
+		apiGroup.GET("/metrics/discovery", server.GetAutoDiscoveredMetrics)
 		apiGroup.GET("/audit", server.GetAuditLogs)
 		apiGroup.POST("/analyze", server.AnalyzeTenant)
 		apiGroup.GET("/drift", server.GetDriftStatus)
-		apiGroup.POST("/drift/:tenant/fix", server.FixDrift)
+		apiGroup.POST("/drift/baseline", server.CreateDriftBaseline)
+		apiGroup.GET("/alloy/deployments", server.GetAlloyDeployments)
+		apiGroup.GET("/alloy/workloads", server.GetAlloyWorkloads)
+		apiGroup.POST("/alloy/scale", server.ScaleAlloyReplicas)
+		apiGroup.GET("/alloy/recommendations", server.GetAlloyScalingRecommendations)
 		apiGroup.GET("/capacity", server.GetCapacityReport)
-		apiGroup.POST("/capacity/:tenant/generate", server.GenerateCapacityReport)
-		apiGroup.GET("/llm/query", server.QueryLLM)
-		apiGroup.POST("/export/:format", server.ExportData)
+		apiGroup.GET("/capacity/export", server.ExportCapacityReport)
+		apiGroup.GET("/capacity/trends", server.GetCapacityTrends)
+		apiGroup.POST("/llm/query", server.ProcessLLMQuery)
+		apiGroup.GET("/llm/capabilities", server.GetLLMCapabilities)
 	}
-
-	// Metrics endpoint (separate from API group)
-	router.GET("/metrics", server.GetMetrics)
 
 	// Serve static files for UI
 	router.Static("/dashboard", "./web-ui/build")
@@ -99,9 +87,6 @@ func main() {
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
 	}
 
 	// Start server in a goroutine
@@ -109,21 +94,6 @@ func main() {
 		logrus.Infof("Server starting on port %s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logrus.Fatalf("Failed to start server: %v", err)
-		}
-	}()
-
-	// Start background services
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				// Periodic drift detection
-				if err := driftDetector.DetectDrift(context.Background()); err != nil {
-					logrus.Warnf("Drift detection failed: %v", err)
-				}
-			}
 		}
 	}()
 
@@ -143,4 +113,4 @@ func main() {
 	}
 
 	logrus.Info("Server exited")
-} 
+}

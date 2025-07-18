@@ -1,0 +1,16 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mimir-insights.fullname" . }}-frontend-config
+  namespace: {{ include "mimir-insights.namespace" . }}
+  labels:
+    {{- include "mimir-insights.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+data:
+  config.js: |
+    window.APP_CONFIG = {
+      apiBaseUrl: 'http://{{ include "mimir-insights.fullname" . }}-backend:{{ .Values.backend.service.port }}',
+      useMockData: {{ .Values.frontend.env.useMockData | default false }}
+    };
+{{- end }} 

@@ -11,15 +11,11 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "mimir-insights.fullname" -}}
-{{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
 {{- end }}
 {{- end }}
 
@@ -65,13 +61,17 @@ Create the name of the service account to use
 Create the namespace name
 */}}
 {{- define "mimir-insights.namespace" -}}
-{{- default .Release.Namespace .Values.namespace }}
+{{- if .Values.namespace.create }}
+{{- .Values.namespace.name }}
+{{- else }}
+{{- .Release.Namespace }}
+{{- end }}
 {{- end }}
 
 {{/*
-Create the backend image name
+Create the image name
 */}}
-{{- define "mimir-insights.backendImage" -}}
+{{- define "mimir-insights.image" -}}
 {{- printf "%s/%s:%s" .Values.imageRegistry .Values.backend.image.repository .Values.backend.image.tag }}
 {{- end }}
 

@@ -9,6 +9,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <a href="/tenants" style={{ color: '#fff', marginRight: 8 }}>Tenants</a>
         <a href="/limits" style={{ color: '#fff', marginRight: 8 }}>Limits</a>
         <a href="/config" style={{ color: '#fff', marginRight: 8 }}>Config</a>
+        <a href="/environment-status" style={{ color: '#fff', marginRight: 8 }}>Environment</a>
         <a href="/reports" style={{ color: '#fff' }}>Reports</a>
       </nav>
       <main style={{ padding: '2rem' }}>{children}</main>

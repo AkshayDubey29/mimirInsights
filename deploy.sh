@@ -2,6 +2,15 @@
 
 set -e
 
+# Configuration
+REGISTRY="ghcr.io/akshaydubey29"
+BACKEND_IMAGE="mimir-insights-backend"
+FRONTEND_IMAGE="mimir-insights-frontend"
+TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+CLUSTER_NAME="mimirInsights-test"
+NAMESPACE="mimir-insights"
+RELEASE_NAME="mimir-insights"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -9,224 +18,300 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-APP_NAME="mimir-insights"
-REGISTRY="ghcr.io/akshaydubey29"
-NAMESPACE="mimir-insights"
-KIND_CLUSTER="mimirInsights-test"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
-
-echo -e "${BLUE}🚀 Starting MimirInsights Deployment Pipeline${NC}"
-echo -e "${BLUE}Timestamp: ${TIMESTAMP}${NC}"
-echo -e "${BLUE}Version: ${VERSION}${NC}"
-echo ""
-
-# Function to print step headers
-print_step() {
-    echo -e "${YELLOW}===================================================${NC}"
-    echo -e "${YELLOW}📦 $1${NC}"
-    echo -e "${YELLOW}===================================================${NC}"
+# Logging functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-# Function to check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
 # Check prerequisites
-print_step "Checking Prerequisites"
-if ! command_exists docker; then
-    echo -e "${RED}❌ Docker is not installed${NC}"
-    exit 1
-fi
-
-if ! command_exists kind; then
-    echo -e "${RED}❌ Kind is not installed${NC}"
-    exit 1
-fi
-
-if ! command_exists kubectl; then
-    echo -e "${RED}❌ kubectl is not installed${NC}"
-    exit 1
-fi
-
-if ! command_exists helm; then
-    echo -e "${RED}❌ Helm is not installed${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ All prerequisites found${NC}"
-
-# Check if kind cluster exists
-print_step "Checking Kind Cluster"
-if ! kind get clusters | grep -q "^${KIND_CLUSTER}$"; then
-    echo -e "${YELLOW}⚠️  Kind cluster '${KIND_CLUSTER}' not found. Creating...${NC}"
-    cat > kind-config.yaml <<EOF
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-name: ${KIND_CLUSTER}
-nodes:
-- role: control-plane
-  kubeadmConfigPatches:
-  - |
-    kind: InitConfiguration
-    nodeRegistration:
-      kubeletExtraArgs:
-        node-labels: "ingress-ready=true"
-  extraPortMappings:
-  - containerPort: 80
-    hostPort: 80
-    protocol: TCP
-  - containerPort: 443
-    hostPort: 443
-    protocol: TCP
-- role: worker
-- role: worker
-EOF
-    kind create cluster --config kind-config.yaml
-    rm kind-config.yaml
-else
-    echo -e "${GREEN}✅ Kind cluster '${KIND_CLUSTER}' exists${NC}"
-fi
-
-# Set kubectl context
-kubectl config use-context kind-${KIND_CLUSTER}
-
-# Build Docker images
-print_step "Building Docker Images"
-echo -e "${BLUE}Building backend image...${NC}"
-docker build -f Dockerfile.backend -t ${REGISTRY}/${APP_NAME}-backend:${TIMESTAMP} -t ${REGISTRY}/${APP_NAME}-backend:latest .
-
-echo -e "${BLUE}Building frontend image...${NC}"
-docker build -f Dockerfile.frontend -t ${REGISTRY}/${APP_NAME}-frontend:${TIMESTAMP} -t ${REGISTRY}/${APP_NAME}-frontend:latest .
-
-echo -e "${GREEN}✅ Docker images built successfully${NC}"
+check_prerequisites() {
+    log_info "Checking prerequisites..."
+    
+    # Check if docker is running
+    if ! docker info > /dev/null 2>&1; then
+        log_error "Docker is not running or not accessible"
+        exit 1
+    fi
+    
+    # Check if kind cluster exists
+    if ! kind get clusters | grep -q "$CLUSTER_NAME"; then
+        log_error "Kind cluster '$CLUSTER_NAME' not found"
+        exit 1
+    fi
+    
+    # Check if kubectl is available
+    if ! command -v kubectl > /dev/null 2>&1; then
+        log_error "kubectl is not installed"
+        exit 1
+    fi
+    
+    # Check if helm is available
+    if ! command -v helm > /dev/null 2>&1; then
+        log_error "helm is not installed"
+        exit 1
+    fi
+    
+    log_success "Prerequisites check passed"
+}
 
 # Login to GitHub Container Registry
-print_step "Logging into GitHub Container Registry"
-if [ -n "$GITHUB_TOKEN" ]; then
-    echo $GITHUB_TOKEN | docker login ghcr.io -u akshaydubey29 --password-stdin
-    echo -e "${GREEN}✅ Logged into GHCR${NC}"
-else
-    echo -e "${YELLOW}⚠️  GITHUB_TOKEN not set. Please login manually:${NC}"
-    echo "docker login ghcr.io -u akshaydubey29"
-    read -p "Press enter after logging in..."
-fi
-
-# Push Docker images
-print_step "Pushing Docker Images to GHCR"
-echo -e "${BLUE}Pushing backend images...${NC}"
-docker push ${REGISTRY}/${APP_NAME}-backend:${TIMESTAMP}
-docker push ${REGISTRY}/${APP_NAME}-backend:latest
-
-echo -e "${BLUE}Pushing frontend images...${NC}"
-docker push ${REGISTRY}/${APP_NAME}-frontend:${TIMESTAMP}
-docker push ${REGISTRY}/${APP_NAME}-frontend:latest
-
-echo -e "${GREEN}✅ All images pushed to GHCR${NC}"
-
-# Load images into kind cluster (for faster deployment)
-print_step "Loading Images into Kind Cluster"
-kind load docker-image ${REGISTRY}/${APP_NAME}-backend:${TIMESTAMP} --name ${KIND_CLUSTER}
-kind load docker-image ${REGISTRY}/${APP_NAME}-frontend:${TIMESTAMP} --name ${KIND_CLUSTER}
-
-echo -e "${GREEN}✅ Images loaded into kind cluster${NC}"
-
-# Install/Setup NGINX Ingress Controller
-print_step "Setting up NGINX Ingress Controller"
-if ! kubectl get namespace ingress-nginx >/dev/null 2>&1; then
-    echo -e "${BLUE}Installing NGINX Ingress Controller...${NC}"
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+login_to_registry() {
+    log_info "Logging in to GitHub Container Registry..."
     
-    echo -e "${BLUE}Waiting for NGINX Ingress Controller to be ready...${NC}"
-    kubectl wait --namespace ingress-nginx \
-        --for=condition=ready pod \
-        --selector=app.kubernetes.io/component=controller \
-        --timeout=300s
-else
-    echo -e "${GREEN}✅ NGINX Ingress Controller already installed${NC}"
-fi
+    # Check if already logged in
+    if docker info | grep -q "ghcr.io"; then
+        log_info "Already logged in to ghcr.io"
+        return
+    fi
+    
+    # Try to login using GITHUB_TOKEN if available
+    if [ -n "$GITHUB_TOKEN" ]; then
+        echo "$GITHUB_TOKEN" | docker login ghcr.io -u akshaydubey29 --password-stdin
+        log_success "Logged in to ghcr.io using GITHUB_TOKEN"
+    else
+        log_warning "GITHUB_TOKEN not set. Please login manually:"
+        log_warning "docker login ghcr.io"
+        read -p "Press Enter after logging in..."
+    fi
+}
 
-# Create namespace
-print_step "Creating Namespace"
-kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+# Build and tag images
+build_images() {
+    log_info "Building and tagging images..."
+    
+    # Build backend
+    log_info "Building backend image..."
+    docker build -f Dockerfile.backend -t "$REGISTRY/$BACKEND_IMAGE:$TIMESTAMP" .
+    docker tag "$REGISTRY/$BACKEND_IMAGE:$TIMESTAMP" "$REGISTRY/$BACKEND_IMAGE:latest"
+    
+    # Build frontend
+    log_info "Building frontend image..."
+    docker build -f Dockerfile.frontend -t "$REGISTRY/$FRONTEND_IMAGE:$TIMESTAMP" .
+    docker tag "$REGISTRY/$FRONTEND_IMAGE:$TIMESTAMP" "$REGISTRY/$FRONTEND_IMAGE:latest"
+    
+    log_success "Images built and tagged successfully"
+}
 
-# Deploy with Helm
-print_step "Deploying with Helm"
-if helm list -n ${NAMESPACE} | grep -q ${APP_NAME}; then
-    echo -e "${BLUE}Upgrading existing Helm release...${NC}"
-    helm upgrade ${APP_NAME} ./deployments/helm-chart \
-        --namespace ${NAMESPACE} \
-        --set backend.image.tag=${TIMESTAMP} \
-        --set frontend.image.tag=${TIMESTAMP} \
-        --set ingress.hosts[0].host=mimir-insights.local \
-        --set imageRegistry=${REGISTRY} \
-        --wait --timeout=300s
-else
-    echo -e "${BLUE}Installing new Helm release...${NC}"
-    helm install ${APP_NAME} ./deployments/helm-chart \
-        --namespace ${NAMESPACE} \
-        --set backend.image.tag=${TIMESTAMP} \
-        --set frontend.image.tag=${TIMESTAMP} \
-        --set ingress.hosts[0].host=mimir-insights.local \
-        --set imageRegistry=${REGISTRY} \
-        --wait --timeout=300s
-fi
+# Push images to registry
+push_images() {
+    log_info "Pushing images to registry..."
+    
+    # Push backend
+    log_info "Pushing backend image..."
+    docker push "$REGISTRY/$BACKEND_IMAGE:$TIMESTAMP"
+    docker push "$REGISTRY/$BACKEND_IMAGE:latest"
+    
+    # Push frontend
+    log_info "Pushing frontend image..."
+    docker push "$REGISTRY/$FRONTEND_IMAGE:$TIMESTAMP"
+    docker push "$REGISTRY/$FRONTEND_IMAGE:latest"
+    
+    log_success "Images pushed successfully"
+}
 
-echo -e "${GREEN}✅ Helm deployment completed${NC}"
+# Create values file with new image tags
+create_values_file() {
+    log_info "Creating values file with new image tags..."
+    
+    cat > values-production.yaml << EOF
+# Mimir Insights Production Values
+# Generated on: $(date)
 
-# Wait for pods to be ready
-print_step "Waiting for Pods to be Ready"
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mimir-insights -n ${NAMESPACE} --timeout=300s
+global:
+  imageRegistry: $REGISTRY
+  imageTag: $TIMESTAMP
 
-# Get deployment status
-print_step "Deployment Status"
-echo -e "${BLUE}Pods:${NC}"
-kubectl get pods -n ${NAMESPACE}
-echo ""
-echo -e "${BLUE}Services:${NC}"
-kubectl get services -n ${NAMESPACE}
-echo ""
-echo -e "${BLUE}Ingress:${NC}"
-kubectl get ingress -n ${NAMESPACE}
+backend:
+  image:
+    repository: $BACKEND_IMAGE
+    tag: $TIMESTAMP
+    pullPolicy: Always
+  replicaCount: 2
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
 
-# Port forward for local access
-print_step "Setting up Port Forward"
-echo -e "${BLUE}Setting up port forwarding...${NC}"
-echo -e "${YELLOW}You can access the application at:${NC}"
-echo -e "${GREEN}🌐 Frontend: http://localhost:8080${NC}"
-echo -e "${GREEN}🔧 Backend API: http://localhost:8081/api${NC}"
+frontend:
+  image:
+    repository: $FRONTEND_IMAGE
+    tag: $TIMESTAMP
+    pullPolicy: Always
+  replicaCount: 2
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  service:
+    type: ClusterIP
+    port: 80
 
-# Create port forward script
-cat > port-forward.sh <<EOF
-#!/bin/bash
-echo "Starting port forwarding..."
-echo "Frontend: http://localhost:8080"
-echo "Backend API: http://localhost:8081/api"
-echo "Press Ctrl+C to stop"
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: mimir-insights.local
+      paths:
+        - path: /
+          pathType: Prefix
+        - path: /api
+          pathType: Prefix
 
-trap 'kill %1 %2; exit' INT
+persistence:
+  enabled: false
 
-kubectl port-forward -n ${NAMESPACE} service/${APP_NAME}-frontend 8080:80 &
-kubectl port-forward -n ${NAMESPACE} service/${APP_NAME}-backend 8081:8080 &
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
 
-wait
+config:
+  mimir:
+    namespace: mimir
+    apiUrl: "http://mimir-distributor:9090"
+    timeout: 30
+  k8s:
+    inCluster: true
+    tenantLabel: "team"
+    tenantPrefix: "tenant-"
+  log:
+    level: "info"
+    format: "json"
+  ui:
+    theme: "dark"
+    refreshInterval: 30
+  llm:
+    enabled: false
+    provider: "openai"
+    model: "gpt-4"
+    maxTokens: 1000
 EOF
+    
+    log_success "Values file created: values-production.yaml"
+}
 
-chmod +x port-forward.sh
+# Deploy to kind cluster
+deploy_to_cluster() {
+    log_info "Deploying to kind cluster '$CLUSTER_NAME'..."
+    
+    # Set kubectl context to kind cluster
+    kubectl config use-context "kind-$CLUSTER_NAME"
+    
+    # Create namespace if it doesn't exist
+    kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Add helm repository if needed
+    helm repo add mimir-insights https://charts.bitnami.com/bitnami
+    helm repo update
+    
+    # Install/upgrade the release
+    log_info "Installing/upgrading helm release..."
+    helm upgrade --install "$RELEASE_NAME" ./deployments/helm-chart \
+        --namespace "$NAMESPACE" \
+        --values values-production.yaml \
+        --wait \
+        --timeout 10m
+    
+    log_success "Deployment completed"
+}
 
-# Test endpoints
-print_step "Testing Application"
-echo -e "${BLUE}Testing backend health endpoint...${NC}"
-kubectl exec -n ${NAMESPACE} deployment/${APP_NAME}-backend -- wget -q -O- http://localhost:8080/api/health || echo "Health check will be available once backend is fully ready"
+# Verify deployment
+verify_deployment() {
+    log_info "Verifying deployment..."
+    
+    # Wait for pods to be ready
+    log_info "Waiting for pods to be ready..."
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mimir-insights-backend -n "$NAMESPACE" --timeout=300s
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mimir-insights-frontend -n "$NAMESPACE" --timeout=300s
+    
+    # Check pod status
+    log_info "Pod status:"
+    kubectl get pods -n "$NAMESPACE" -o wide
+    
+    # Check services
+    log_info "Service status:"
+    kubectl get svc -n "$NAMESPACE"
+    
+    # Check ingress
+    log_info "Ingress status:"
+    kubectl get ingress -n "$NAMESPACE"
+    
+    # Test backend health endpoint
+    log_info "Testing backend health endpoint..."
+    BACKEND_POD=$(kubectl get pod -l app.kubernetes.io/name=mimir-insights-backend -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}')
+    if kubectl exec "$BACKEND_POD" -n "$NAMESPACE" -- wget --no-verbose --tries=1 -O- http://localhost:8080/api/health; then
+        log_success "Backend health check passed"
+    else
+        log_error "Backend health check failed"
+        return 1
+    fi
+    
+    log_success "Deployment verification completed"
+}
 
-echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo -e "1. Run ${GREEN}./port-forward.sh${NC} to access the application locally"
-echo -e "2. Visit ${GREEN}http://localhost:8080${NC} for the frontend"
-echo -e "3. Visit ${GREEN}http://localhost:8081/api/health${NC} for backend health check"
-echo -e "4. Add ${GREEN}127.0.0.1 mimir-insights.local${NC} to /etc/hosts for ingress access"
-echo ""
-echo -e "${BLUE}🎉 MimirInsights deployment pipeline completed!${NC}"
+# Show access information
+show_access_info() {
+    log_info "Deployment Summary:"
+    echo "=================================="
+    echo "Registry: $REGISTRY"
+    echo "Backend Image: $REGISTRY/$BACKEND_IMAGE:$TIMESTAMP"
+    echo "Frontend Image: $REGISTRY/$FRONTEND_IMAGE:$TIMESTAMP"
+    echo "Cluster: $CLUSTER_NAME"
+    echo "Namespace: $NAMESPACE"
+    echo "Release: $RELEASE_NAME"
+    echo ""
+    echo "To access the application:"
+    echo "1. Add to /etc/hosts: 127.0.0.1 mimir-insights.local"
+    echo "2. Visit: http://mimir-insights.local"
+    echo ""
+    echo "To check logs:"
+    echo "kubectl logs -f deployment/$RELEASE_NAME-backend -n $NAMESPACE"
+    echo "kubectl logs -f deployment/$RELEASE_NAME-frontend -n $NAMESPACE"
+    echo ""
+    echo "To uninstall:"
+    echo "helm uninstall $RELEASE_NAME -n $NAMESPACE"
+}
+
+# Main execution
+main() {
+    log_info "Starting Mimir Insights deployment..."
+    log_info "Timestamp: $TIMESTAMP"
+    
+    check_prerequisites
+    login_to_registry
+    build_images
+    push_images
+    create_values_file
+    deploy_to_cluster
+    verify_deployment
+    show_access_info
+    
+    log_success "Deployment completed successfully!"
+}
+
+# Run main function
+main "$@" 
