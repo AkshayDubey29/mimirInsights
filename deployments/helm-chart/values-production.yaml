@@ -65,17 +65,41 @@ frontend:
 # Ingress Configuration
 ingress:
   enabled: true
-  className: nginx
+  className: alb
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:138978013424:certificate/7b1c00f5-19ee-4e6c-9ca5-b30679eac---
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-port: "8081"
+    alb.ingress.kubernetes.io/inbound-cidrs: 10.0.0.0/8
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/security-groups: sg-03a537b10f8b713c3,sg-0faab6bb8700b4164
+    alb.ingress.kubernetes.io/subnets: subnet-01ab33de57cfc8101,subnet-0247d97d25e7469f8,subnet-0ebfe41b055f0dec3,subnet-0971e77d71e---
+    alb.ingress.kubernetes.io/success-codes: "200"
+    alb.ingress.kubernetes.io/tags: role=couwatch_mimir
+    alb.ingress.kubernetes.io/target-type: ip
+    kubernetes.io/ingress.class: alb
   hosts:
     - host: mimir-insights.yourdomain.com
       paths:
         - path: /
           pathType: Prefix
+          service:
+            name: mimir-insights-frontend
+            port:
+              number: 80
+        - path: /api
+          pathType: Prefix
+          service:
+            name: mimir-insights-backend
+            port:
+              number: 8080
+        - path: /healthz
+          pathType: Prefix
+          service:
+            name: mimir-insights-frontend
+            port:
+              number: 80
   tls:
     - secretName: mimir-insights-tls
       hosts:

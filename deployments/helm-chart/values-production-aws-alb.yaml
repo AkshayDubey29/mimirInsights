@@ -1,5 +1,5 @@
-# Production Helm Values for MimirInsights
-# Monitoring and LLM features disabled for production stability
+# Production Helm Values for MimirInsights - AWS ALB Configuration
+# Configured for AWS Application Load Balancer with proper annotations
 
 global:
   namespace: mimir-insights
@@ -75,37 +75,52 @@ frontend:
     timeoutSeconds: 3
     failureThreshold: 3
 
+# AWS ALB Ingress Configuration
 ingress:
   enabled: true
   className: alb
   annotations:
+    # AWS Certificate Manager SSL certificate
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:138978013424:certificate/7b1c00f5-19ee-4e6c-9ca5-b30679eac---
+    
+    # Health check configuration
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
     alb.ingress.kubernetes.io/healthcheck-port: "8081"
+    alb.ingress.kubernetes.io/success-codes: "200"
+    
+    # Network configuration
     alb.ingress.kubernetes.io/inbound-cidrs: 10.0.0.0/8
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    
+    # Security groups and subnets
     alb.ingress.kubernetes.io/security-groups: sg-03a537b10f8b713c3,sg-0faab6bb8700b4164
     alb.ingress.kubernetes.io/subnets: subnet-01ab33de57cfc8101,subnet-0247d97d25e7469f8,subnet-0ebfe41b055f0dec3,subnet-0971e77d71e---
-    alb.ingress.kubernetes.io/success-codes: "200"
+    
+    # Tags for resource management
     alb.ingress.kubernetes.io/tags: role=couwatch_mimir
-    alb.ingress.kubernetes.io/target-type: ip
+    
+    # Ingress class
     kubernetes.io/ingress.class: alb
   hosts:
     - host: mimir-insights.yourdomain.com
       paths:
+        # Frontend application
         - path: /
           pathType: Prefix
           service:
             name: mimir-insights-frontend
             port:
               number: 80
+        # Backend API
         - path: /api
           pathType: Prefix
           service:
             name: mimir-insights-backend
             port:
               number: 8080
+        # Health check endpoint
         - path: /healthz
           pathType: Prefix
           service:
