@@ -23,9 +23,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      {{- if .Values.imagePullSecrets }}
+      {{- if .Values.backend.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+        {{- toYaml .Values.backend.imagePullSecrets | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "mimir-insights.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
@@ -38,7 +38,7 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: {{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}
+          image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}{{ else }}{{ .Values.backend.image.repository }}{{ end }}:{{ .Values.backend.image.tag }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http

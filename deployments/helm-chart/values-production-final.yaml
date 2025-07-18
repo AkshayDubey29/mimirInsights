@@ -4,7 +4,6 @@
 # Global settings
 global:
   namespace: mimir-insights
-  imageRegistry: ghcr.io/akshaydubey29
 
 # Namespace configuration
 namespace:
@@ -516,10 +515,8 @@ podAnnotations:
   prometheus.io/scrape: "false"
   prometheus.io/port: "8080"
 
-# Node selector for production nodes
-nodeSelector:
-  kubernetes.io/os: linux
-  node-role.kubernetes.io/worker: "true"
+# Node selector for production nodes (disabled for kind cluster)
+nodeSelector: {}
 
 # Affinity for high availability
 affinity:

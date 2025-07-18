@@ -4,7 +4,6 @@
 # Global settings
 global:
   namespace: mimir-insights
-  imageRegistry: ghcr.io/akshaydubey29
 
 # Namespace configuration
 namespace:
