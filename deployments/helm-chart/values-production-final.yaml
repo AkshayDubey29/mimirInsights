@@ -1,10 +1,564 @@
 # Production Helm Values for MimirInsights
 # Monitoring and LLM features disabled for production stability
 
+# Global settings
 global:
   namespace: mimir-insights
   imageRegistry: ghcr.io/akshaydubey29
 
+# Namespace configuration
+namespace:
+  enabled: true
+  name: mimir-insights
+  labels:
+    app.kubernetes.io/name: mimir-insights
+    app.kubernetes.io/instance: production
+
+# Mimir configuration - Where the actual Mimir deployment is running
+mimir:
+  # Namespace where Mimir is deployed (auto-discovered if empty or "auto")
+  namespace: "auto"
+  # Auto-discovery configuration
+  discovery:
+    # Enable automatic Mimir namespace detection
+    autoDetect: true
+    # Enhanced namespace patterns to search for Mimir (regex supported)
+    namespacePatterns:
+      # Standard Mimir namespaces
+      - "mimir.*"
+      - ".*mimir.*"
+      - "cortex.*"
+      - ".*cortex.*"
+      # Observability and monitoring namespaces
+      - "observability.*"
+      - "monitoring.*"
+      - "metrics.*"
+      - "prometheus.*"
+      # Common production naming patterns
+      - ".*-mimir-.*"
+      - ".*-cortex-.*"
+      - ".*-obs-.*"
+      - ".*-mon-.*"
+      # Cloud provider specific patterns
+      - ".*-observability.*"
+      - ".*-monitoring.*"
+      - ".*-metrics.*"
+      # Enterprise patterns
+      - ".*-mimir-prod.*"
+      - ".*-mimir-staging.*"
+      - ".*-cortex-prod.*"
+      - ".*-cortex-staging.*"
+      # Multi-tenant patterns
+      - ".*-shared.*"
+      - ".*-common.*"
+      - ".*-platform.*"
+      - ".*-infra.*"
+    # Enhanced label selectors to identify Mimir namespaces
+    namespaceLabels:
+      - key: "app.kubernetes.io/name"
+        values: ["mimir", "cortex", "observability", "monitoring"]
+      - key: "app.kubernetes.io/part-of"
+        values: ["mimir", "cortex", "observability", "monitoring", "metrics"]
+      - key: "app.kubernetes.io/component"
+        values: ["mimir", "cortex", "observability", "monitoring"]
+      - key: "app.kubernetes.io/instance"
+        values: ["mimir", "cortex", "observability", "monitoring"]
+      - key: "name"
+        values: ["mimir", "cortex", "observability", "monitoring"]
+      - key: "component"
+        values: ["mimir", "cortex", "observability", "monitoring"]
+      - key: "type"
+        values: ["observability", "monitoring", "metrics"]
+      - key: "platform"
+        values: ["observability", "monitoring", "metrics"]
+    # Comprehensive component discovery patterns
+    componentPatterns:
+      # Distributor patterns - handles metric ingestion
+      distributor: 
+        - ".*distributor.*"
+        - ".*dist.*"
+        - ".*distribute.*"
+        - ".*ingest.*dist.*"
+        - ".*metric.*dist.*"
+        - ".*mimir.*dist.*"
+        - ".*cortex.*dist.*"
+        - ".*obs.*dist.*"
+        - ".*mon.*dist.*"
+        - ".*-dist-.*"
+        - ".*-distributor-.*"
+        - ".*distributor-.*"
+        - ".*-distributor"
+        - "distributor-.*"
+        - ".*distributor"
+        - ".*dist.*ingest.*"
+        - ".*ingest.*dist.*"
+        - ".*metric.*ingest.*"
+        - ".*receive.*"
+        - ".*receiver.*"
+        - ".*collect.*"
+        - ".*collector.*"
+      # Ingester patterns - stores metrics
+      ingester:
+        - ".*ingester.*"
+        - ".*ingest.*"
+        - ".*store.*"
+        - ".*storage.*"
+        - ".*mimir.*ingest.*"
+        - ".*cortex.*ingest.*"
+        - ".*obs.*ingest.*"
+        - ".*mon.*ingest.*"
+        - ".*-ingest-.*"
+        - ".*-ingester-.*"
+        - ".*ingester-.*"
+        - ".*-ingester"
+        - "ingester-.*"
+        - ".*ingester"
+        - ".*ingest.*store.*"
+        - ".*store.*ingest.*"
+        - ".*write.*"
+        - ".*writer.*"
+        - ".*persist.*"
+        - ".*persistence.*"
+      # Querier patterns - handles queries
+      querier:
+        - ".*querier.*"
+        - ".*query.*"
+        - ".*read.*"
+        - ".*reader.*"
+        - ".*mimir.*query.*"
+        - ".*cortex.*query.*"
+        - ".*obs.*query.*"
+        - ".*mon.*query.*"
+        - ".*-query-.*"
+        - ".*-querier-.*"
+        - ".*querier-.*"
+        - ".*-querier"
+        - "querier-.*"
+        - ".*querier"
+        - ".*query.*read.*"
+        - ".*read.*query.*"
+        - ".*search.*"
+        - ".*searcher.*"
+        - ".*fetch.*"
+        - ".*fetcher.*"
+        - ".*frontend.*"
+        - ".*query.*frontend.*"
+        - ".*frontend.*query.*"
+      # Compactor patterns - compacts data
+      compactor:
+        - ".*compactor.*"
+        - ".*compact.*"
+        - ".*merge.*"
+        - ".*merger.*"
+        - ".*mimir.*compact.*"
+        - ".*cortex.*compact.*"
+        - ".*obs.*compact.*"
+        - ".*mon.*compact.*"
+        - ".*-compact-.*"
+        - ".*-compactor-.*"
+        - ".*compactor-.*"
+        - ".*-compactor"
+        - "compactor-.*"
+        - ".*compactor"
+        - ".*compact.*merge.*"
+        - ".*merge.*compact.*"
+        - ".*consolidate.*"
+        - ".*consolidator.*"
+        - ".*optimize.*"
+        - ".*optimizer.*"
+      # Ruler patterns - handles rules
+      ruler:
+        - ".*ruler.*"
+        - ".*rule.*"
+        - ".*alert.*"
+        - ".*recording.*"
+        - ".*mimir.*rule.*"
+        - ".*cortex.*rule.*"
+        - ".*obs.*rule.*"
+        - ".*mon.*rule.*"
+        - ".*-rule-.*"
+        - ".*-ruler-.*"
+        - ".*ruler-.*"
+        - ".*-ruler"
+        - "ruler-.*"
+        - ".*ruler"
+        - ".*rule.*eval.*"
+        - ".*eval.*rule.*"
+        - ".*rule.*exec.*"
+        - ".*exec.*rule.*"
+        - ".*rule.*process.*"
+        - ".*process.*rule.*"
+      # Alertmanager patterns - handles alerts
+      alertmanager:
+        - ".*alertmanager.*"
+        - ".*alert.*manager.*"
+        - ".*alert.*"
+        - ".*notification.*"
+        - ".*mimir.*alert.*"
+        - ".*cortex.*alert.*"
+        - ".*obs.*alert.*"
+        - ".*mon.*alert.*"
+        - ".*-alert-.*"
+        - ".*-alertmanager-.*"
+        - ".*alertmanager-.*"
+        - ".*-alertmanager"
+        - "alertmanager-.*"
+        - ".*alertmanager"
+        - ".*alert.*notify.*"
+        - ".*notify.*alert.*"
+        - ".*alert.*send.*"
+        - ".*send.*alert.*"
+        - ".*alert.*dispatch.*"
+        - ".*dispatch.*alert.*"
+      # Store Gateway patterns - handles object storage
+      store_gateway:
+        - ".*store.*gateway.*"
+        - ".*gateway.*"
+        - ".*store.*"
+        - ".*object.*store.*"
+        - ".*mimir.*store.*"
+        - ".*cortex.*store.*"
+        - ".*obs.*store.*"
+        - ".*mon.*store.*"
+        - ".*-store-.*"
+        - ".*-gateway-.*"
+        - ".*store.*gateway-.*"
+        - ".*-store.*gateway"
+        - "store.*gateway-.*"
+        - ".*store.*gateway"
+        - ".*gateway.*store.*"
+        - ".*object.*gateway.*"
+        - ".*gateway.*object.*"
+        - ".*storage.*gateway.*"
+        - ".*gateway.*storage.*"
+        - ".*s3.*gateway.*"
+        - ".*gcs.*gateway.*"
+        - ".*azure.*gateway.*"
+      # Additional Mimir components
+      memcached:
+        - ".*memcached.*"
+        - ".*cache.*"
+        - ".*mimir.*cache.*"
+        - ".*cortex.*cache.*"
+        - ".*-cache-.*"
+        - ".*cache-.*"
+        - ".*-cache"
+        - "cache-.*"
+        - ".*cache"
+      consul:
+        - ".*consul.*"
+        - ".*service.*discovery.*"
+        - ".*discovery.*"
+        - ".*mimir.*consul.*"
+        - ".*cortex.*consul.*"
+        - ".*-consul-.*"
+        - ".*consul-.*"
+        - ".*-consul"
+        - "consul-.*"
+        - ".*consul"
+      etcd:
+        - ".*etcd.*"
+        - ".*kv.*store.*"
+        - ".*key.*value.*"
+        - ".*mimir.*etcd.*"
+        - ".*cortex.*etcd.*"
+        - ".*-etcd-.*"
+        - ".*etcd-.*"
+        - ".*-etcd"
+        - "etcd-.*"
+        - ".*etcd"
+      nginx:
+        - ".*nginx.*"
+        - ".*proxy.*"
+        - ".*load.*balancer.*"
+        - ".*lb.*"
+        - ".*mimir.*nginx.*"
+        - ".*cortex.*nginx.*"
+        - ".*-nginx-.*"
+        - ".*nginx-.*"
+        - ".*-nginx"
+        - "nginx-.*"
+        - ".*nginx"
+        - ".*proxy.*"
+        - ".*-proxy-.*"
+        - ".*proxy-.*"
+        - ".*-proxy"
+        - "proxy-.*"
+        - ".*proxy"
+    # Enhanced service discovery patterns
+    servicePatterns:
+      # Standard Mimir service patterns
+      - "mimir-.*"
+      - "cortex-.*"
+      - ".*-mimir-.*"
+      - ".*-cortex-.*"
+      # Component-specific service patterns
+      - ".*distributor.*"
+      - ".*ingester.*"
+      - ".*querier.*"
+      - ".*compactor.*"
+      - ".*ruler.*"
+      - ".*alertmanager.*"
+      - ".*store.*gateway.*"
+      - ".*gateway.*"
+      # Alternative naming patterns
+      - ".*-dist-.*"
+      - ".*-ingest-.*"
+      - ".*-query-.*"
+      - ".*-compact-.*"
+      - ".*-rule-.*"
+      - ".*-alert-.*"
+      - ".*-store-.*"
+      # Service discovery patterns
+      - ".*-service.*"
+      - ".*-svc.*"
+      - ".*service.*"
+      - ".*svc.*"
+      # Load balancer patterns
+      - ".*-lb.*"
+      - ".*-loadbalancer.*"
+      - ".*loadbalancer.*"
+      - ".*lb.*"
+      # Headless service patterns
+      - ".*-headless.*"
+      - ".*headless.*"
+      # Cluster IP patterns
+      - ".*-clusterip.*"
+      - ".*clusterip.*"
+      # Node port patterns
+      - ".*-nodeport.*"
+      - ".*nodeport.*"
+    # Enhanced ConfigMap patterns
+    configMapPatterns:
+      # Standard Mimir config patterns
+      - ".*mimir.*config.*"
+      - ".*cortex.*config.*"
+      - ".*runtime.*overrides.*"
+      - ".*limits.*config.*"
+      # Component-specific config patterns
+      - ".*distributor.*config.*"
+      - ".*ingester.*config.*"
+      - ".*querier.*config.*"
+      - ".*compactor.*config.*"
+      - ".*ruler.*config.*"
+      - ".*alertmanager.*config.*"
+      - ".*store.*gateway.*config.*"
+      - ".*gateway.*config.*"
+      # Configuration file patterns
+      - ".*config.*yaml.*"
+      - ".*config.*yml.*"
+      - ".*config.*json.*"
+      - ".*config.*toml.*"
+      - ".*config.*ini.*"
+      # Runtime configuration patterns
+      - ".*runtime.*config.*"
+      - ".*runtime.*overrides.*"
+      - ".*overrides.*"
+      - ".*limits.*"
+      - ".*tenant.*config.*"
+      - ".*tenant.*limits.*"
+      # Environment-specific config patterns
+      - ".*prod.*config.*"
+      - ".*staging.*config.*"
+      - ".*dev.*config.*"
+      - ".*test.*config.*"
+      # Multi-tenant config patterns
+      - ".*tenant.*"
+      - ".*multi.*tenant.*"
+      - ".*multitenant.*"
+      - ".*namespace.*config.*"
+      - ".*namespace.*limits.*"
+      # Storage configuration patterns
+      - ".*storage.*config.*"
+      - ".*object.*store.*config.*"
+      - ".*s3.*config.*"
+      - ".*gcs.*config.*"
+      - ".*azure.*config.*"
+      - ".*local.*config.*"
+      # Authentication and authorization patterns
+      - ".*auth.*config.*"
+      - ".*authentication.*config.*"
+      - ".*authorization.*config.*"
+      - ".*rbac.*config.*"
+      - ".*security.*config.*"
+      # Network configuration patterns
+      - ".*network.*config.*"
+      - ".*networking.*config.*"
+      - ".*proxy.*config.*"
+      - ".*ingress.*config.*"
+      - ".*egress.*config.*"
+      # Monitoring and observability patterns
+      - ".*monitoring.*config.*"
+      - ".*observability.*config.*"
+      - ".*metrics.*config.*"
+      - ".*logging.*config.*"
+      - ".*tracing.*config.*"
+      - ".*alerting.*config.*"
+      - ".*recording.*config.*"
+  # API configuration
+  api:
+    # Service name pattern for distributor (auto-discovered if empty)
+    distributorService: ""
+    # Default port for Mimir components
+    port: 9090
+    # Timeout for API calls
+    timeout: 30
+    # Enhanced paths to try for metrics endpoints
+    metricsPaths:
+      - "/metrics"
+      - "/api/v1/query"
+      - "/prometheus/api/v1/query"
+      - "/api/v1/query_range"
+      - "/prometheus/api/v1/query_range"
+      - "/api/v1/series"
+      - "/prometheus/api/v1/series"
+      - "/api/v1/labels"
+      - "/prometheus/api/v1/labels"
+      - "/api/v1/label/{name}/values"
+      - "/prometheus/api/v1/label/{name}/values"
+      - "/api/v1/targets"
+      - "/prometheus/api/v1/targets"
+      - "/api/v1/rules"
+      - "/prometheus/api/v1/rules"
+      - "/api/v1/alerts"
+      - "/prometheus/api/v1/alerts"
+      - "/api/v1/status/targets"
+      - "/prometheus/api/v1/status/targets"
+      - "/api/v1/status/runtimeinfo"
+      - "/prometheus/api/v1/status/runtimeinfo"
+      - "/api/v1/status/buildinfo"
+      - "/prometheus/api/v1/status/buildinfo"
+      - "/api/v1/status/config"
+      - "/prometheus/api/v1/status/config"
+      - "/api/v1/status/flags"
+      - "/prometheus/api/v1/status/flags"
+      - "/api/v1/status/tsdb"
+      - "/prometheus/api/v1/status/tsdb"
+      - "/api/v1/status/walreplay"
+      - "/prometheus/api/v1/status/walreplay"
+      - "/api/v1/status/head"
+      - "/prometheus/api/v1/status/head"
+      - "/api/v1/status/ready"
+      - "/prometheus/api/v1/status/ready"
+      - "/api/v1/status/healthy"
+      - "/prometheus/api/v1/status/healthy"
+      - "/api/v1/status/version"
+      - "/prometheus/api/v1/status/version"
+      - "/api/v1/status/uptime"
+      - "/prometheus/api/v1/status/uptime"
+      - "/api/v1/status/memory"
+      - "/prometheus/api/v1/status/memory"
+      - "/api/v1/status/cpu"
+      - "/prometheus/api/v1/status/cpu"
+      - "/api/v1/status/disk"
+      - "/prometheus/api/v1/status/disk"
+      - "/api/v1/status/network"
+      - "/prometheus/api/v1/status/network"
+      - "/api/v1/status/goroutines"
+      - "/prometheus/api/v1/status/goroutines"
+      - "/api/v1/status/threads"
+      - "/prometheus/api/v1/status/threads"
+      - "/api/v1/status/gc"
+      - "/prometheus/api/v1/status/gc"
+      - "/api/v1/status/pprof"
+      - "/prometheus/api/v1/status/pprof"
+      - "/api/v1/status/debug"
+      - "/prometheus/api/v1/status/debug"
+      - "/api/v1/status/pprof/goroutine"
+      - "/prometheus/api/v1/status/pprof/goroutine"
+      - "/api/v1/status/pprof/heap"
+      - "/prometheus/api/v1/status/pprof/heap"
+      - "/api/v1/status/pprof/profile"
+      - "/prometheus/api/v1/status/pprof/profile"
+      - "/api/v1/status/pprof/symbol"
+      - "/prometheus/api/v1/status/pprof/symbol"
+      - "/api/v1/status/pprof/trace"
+      - "/prometheus/api/v1/status/pprof/trace"
+      - "/api/v1/status/pprof/block"
+      - "/prometheus/api/v1/status/pprof/block"
+      - "/api/v1/status/pprof/mutex"
+      - "/prometheus/api/v1/status/pprof/mutex"
+      - "/api/v1/status/pprof/threadcreate"
+      - "/prometheus/api/v1/status/pprof/threadcreate"
+      - "/api/v1/status/pprof/cmdline"
+      - "/prometheus/api/v1/status/pprof/cmdline"
+      - "/api/v1/status/pprof/symbol"
+      - "/prometheus/api/v1/status/pprof/symbol"
+      - "/api/v1/status/pprof/trace"
+      - "/prometheus/api/v1/status/pprof/trace"
+      - "/api/v1/status/pprof/block"
+      - "/prometheus/api/v1/status/pprof/block"
+      - "/api/v1/status/pprof/mutex"
+      - "/prometheus/api/v1/status/pprof/mutex"
+      - "/api/v1/status/pprof/threadcreate"
+      - "/prometheus/api/v1/status/pprof/threadcreate"
+      - "/api/v1/status/pprof/cmdline"
+      - "/prometheus/api/v1/status/pprof/cmdline"
+      - "/api/v1/status/pprof/symbol"
+      - "/prometheus/api/v1/status/pprof/symbol"
+      - "/api/v1/status/pprof/trace"
+      - "/prometheus/api/v1/status/pprof/trace"
+      - "/api/v1/status/pprof/block"
+      - "/prometheus/api/v1/status/pprof/block"
+      - "/api/v1/status/pprof/mutex"
+      - "/prometheus/api/v1/status/pprof/mutex"
+      - "/api/v1/status/pprof/threadcreate"
+      - "/prometheus/api/v1/status/pprof/threadcreate"
+      - "/api/v1/status/pprof/cmdline"
+      - "/prometheus/api/v1/status/pprof/cmdline"
+
+# Image pull secrets for private registry
+imagePullSecrets:
+  - name: ghcr-secret
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "false"
+  prometheus.io/port: "8080"
+
+# Node selector for production nodes
+nodeSelector:
+  kubernetes.io/os: linux
+  node-role.kubernetes.io/worker: "true"
+
+# Affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - mimir-insights
+        topologyKey: kubernetes.io/hostname
+
+# Tolerations for production nodes
+tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  supplementalGroups: [1000]
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# Backend configuration
 backend:
   enabled: true
   image:
@@ -20,26 +574,78 @@ backend:
       memory: "512Mi"
       cpu: "500m"
   env:
-    LOG_LEVEL: "info"
-    DISCOVERY_INTERVAL: "300"
-    METRICS_ENABLED: "false"
-    LLM_ENABLED: "false"
+    - name: LOG_LEVEL
+      value: "info"
+    - name: DISCOVERY_INTERVAL
+      value: "300"
+    - name: METRICS_ENABLED
+      value: "false"
+    - name: LLM_ENABLED
+      value: "false"
+    - name: KUBERNETES_NAMESPACE
+      value: "mimir-insights"
+    - name: API_PORT
+      value: "8080"
+    # Mimir configuration
+    - name: MIMIR_NAMESPACE
+      value: "{{ .Values.mimir.namespace | default \"auto\" }}"
+    - name: MIMIR_API_URL
+      value: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+    - name: MIMIR_AUTO_DISCOVER
+      value: "{{ .Values.mimir.discovery.autoDetect }}"
+    - name: K8S_IN_CLUSTER
+      value: "true"
+    - name: MIMIR_DISCOVERY_INTERVAL
+      value: "300"
+  config:
+    mimir:
+      namespace: "{{ .Values.mimir.namespace | default \"auto\" }}"
+      api_url: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+      timeout: "{{ .Values.mimir.api.timeout }}"
+      discovery:
+        auto_detect: "{{ .Values.mimir.discovery.autoDetect }}"
+        namespace_patterns: "{{ .Values.mimir.discovery.namespacePatterns | toJson }}"
+        component_patterns: "{{ .Values.mimir.discovery.componentPatterns | toJson }}"
+        service_patterns: "{{ .Values.mimir.discovery.servicePatterns | toJson }}"
+        config_map_patterns: "{{ .Values.mimir.discovery.configMapPatterns | toJson }}"
+    k8s:
+      in_cluster: true
+      tenant_label: team
+      tenant_prefix: tenant-
+    log:
+      level: info
+      format: json
+    ui:
+      theme: dark
+      refresh_interval: 30
+    llm:
+      enabled: false
+      provider: openai
+      model: gpt-4
+      max_tokens: 1000
   service:
     type: ClusterIP
     port: 8080
   livenessProbe:
     enabled: true
+    httpGet:
+      path: /healthz
+      port: 8080
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
     enabled: true
+    httpGet:
+      path: /ready
+      port: 8080
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
 
+# Frontend configuration
 frontend:
   enabled: true
   image:
@@ -55,33 +661,46 @@ frontend:
       memory: "256Mi"
       cpu: "200m"
   env:
-    REACT_APP_API_BASE_URL: "/api"
-    REACT_APP_ENABLE_MOCK_DATA: "false"
-    REACT_APP_ENABLE_MONITORING: "false"
-    REACT_APP_ENABLE_LLM: "false"
+    - name: REACT_APP_API_BASE_URL
+      value: "/api"
+    - name: REACT_APP_ENABLE_MOCK_DATA
+      value: "false"
+    - name: REACT_APP_ENABLE_MONITORING
+      value: "false"
+    - name: REACT_APP_ENABLE_LLM
+      value: "false"
+    - name: LOCAL_DEV
+      value: "false"
   service:
     type: ClusterIP
     port: 80
   livenessProbe:
     enabled: true
+    httpGet:
+      path: /healthz
+      port: 80
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
     enabled: true
+    httpGet:
+      path: /healthz
+      port: 80
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
 
+# Ingress configuration
 ingress:
   enabled: true
   className: alb
   annotations:
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:138978013424:certificate/7b1c00f5-19ee-4e6c-9ca5-b30679eac---
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
-    alb.ingress.kubernetes.io/healthcheck-port: "8081"
+    alb.ingress.kubernetes.io/healthcheck-port: "80"
     alb.ingress.kubernetes.io/inbound-cidrs: 10.0.0.0/8
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/scheme: internal
@@ -117,15 +736,20 @@ ingress:
       hosts:
         - mimir-insights.yourdomain.com
 
+# RBAC configuration
 rbac:
   enabled: true
   create: true
 
+# Service account configuration
 serviceAccount:
   enabled: true
   create: true
   name: mimir-insights
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::138978013424:role/mimir-insights-role
 
+# Horizontal Pod Autoscaler
 hpa:
   enabled: true
   backend:
@@ -202,4 +826,23 @@ priorityClass:
   enabled: true
   value: 1000
   globalDefault: false
-  description: "High priority for MimirInsights pods" 
+  description: "High priority for MimirInsights pods"
+
+# Probes configuration
+probes:
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3 
