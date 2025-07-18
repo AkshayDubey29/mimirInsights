@@ -9,7 +9,7 @@ backend:
   enabled: true
   image:
     repository: mimir-insights-backend
-    tag: latest
+    tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
   replicaCount: 2
   resources:
@@ -44,7 +44,7 @@ frontend:
   enabled: true
   image:
     repository: mimir-insights-frontend
-    tag: latest
+    tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
   replicaCount: 2
   resources:

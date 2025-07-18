@@ -6,7 +6,7 @@ backend:
   enabled: true
   image:
     repository: mimir-insights-backend
-    tag: "fast-1752813464"
+    tag: "v1.0.0-20250718-110355"
     pullPolicy: Never
   replicaCount: 2
   resources:
@@ -37,7 +37,7 @@ frontend:
   enabled: true
   image:
     repository: mimir-insights-frontend
-    tag: "fast-1752813464"
+    tag: "v1.0.0-20250718-110355"
     pullPolicy: Never
   replicaCount: 2
   resources:

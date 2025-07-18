@@ -6,7 +6,7 @@ backend:
   enabled: true
   image:
     repository: ghcr.io/akshaydubey29/mimir-insights-backend
-    tag: "latest"
+    tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
   replicaCount: 2
   resources:
@@ -37,7 +37,7 @@ frontend:
   enabled: true
   image:
     repository: ghcr.io/akshaydubey29/mimir-insights-frontend
-    tag: "latest"
+    tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
   replicaCount: 2
   resources:
