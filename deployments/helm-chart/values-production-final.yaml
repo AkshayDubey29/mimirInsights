@@ -562,41 +562,69 @@ securityContext:
 backend:
   enabled: true
   image:
-    repository: mimir-insights-backend
+    repository: ghcr.io/akshaydubey29/mimir-insights-backend
     tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
+  imagePullSecrets:
+    - name: ghcr-secret
   replicaCount: 2
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "250m"
+      cpu: 200m
+      memory: 256Mi
     limits:
-      memory: "512Mi"
-      cpu: "500m"
+      cpu: 500m
+      memory: 512Mi
   env:
+    - name: MIMIR_NAMESPACE
+      value: "auto"
+    - name: MIMIR_DISCOVERY_ENABLED
+      value: "true"
+    - name: MIMIR_DISCOVERY_NAMESPACE_PATTERNS
+      value: ".*-mimir-.*,.*-obs-.*,.*-platform.*,.*-monitoring.*,.*-metrics.*,.*-observability.*,mimir,cortex,observability,monitoring,metrics,platform"
+    - name: MIMIR_DISCOVERY_LABEL_SELECTORS
+      value: "app.kubernetes.io/name~=mimir,app.kubernetes.io/name~=cortex,app.kubernetes.io/name~=observability,app.kubernetes.io/name~=monitoring,app.kubernetes.io/name~=metrics,app.kubernetes.io/name~=platform,app~=mimir,app~=cortex,app~=observability,app~=monitoring,app~=metrics,app~=platform"
+    - name: MIMIR_DISCOVERY_COMPONENT_PATTERNS
+      value: ".*-distributor.*,.*-ingester.*,.*-querier.*,.*-compactor.*,.*-ruler.*,.*-alertmanager.*,.*-store-gateway.*,.*-memcached.*,.*-consul.*,.*-etcd.*,.*-nginx.*,distributor,ingester,querier,compactor,ruler,alertmanager,store-gateway,memcached,consul,etcd,nginx"
+    - name: MIMIR_DISCOVERY_SERVICE_PATTERNS
+      value: ".*-distributor.*,.*-ingester.*,.*-querier.*,.*-compactor.*,.*-ruler.*,.*-alertmanager.*,.*-store-gateway.*,.*-memcached.*,.*-consul.*,.*-etcd.*,.*-nginx.*,distributor,ingester,querier,compactor,ruler,alertmanager,store-gateway,memcached,consul,etcd,nginx"
+    - name: MIMIR_DISCOVERY_CONFIG_PATTERNS
+      value: ".*-mimir.*,.*-cortex.*,.*-observability.*,.*-monitoring.*,.*-metrics.*,.*-platform.*,mimir,cortex,observability,monitoring,metrics,platform"
+    - name: ENVIRONMENT
+      value: "production"
     - name: LOG_LEVEL
       value: "info"
-    - name: DISCOVERY_INTERVAL
-      value: "300"
-    - name: METRICS_ENABLED
+    - name: API_BASE_PATH
+      value: "/api"
+    - name: ENABLE_MONITORING
       value: "false"
-    - name: LLM_ENABLED
+    - name: ENABLE_LLM
       value: "false"
-    - name: KUBERNETES_NAMESPACE
-      value: "mimir-insights"
-    - name: API_PORT
-      value: "8080"
-    # Mimir configuration
-    - name: MIMIR_NAMESPACE
-      value: "{{ .Values.mimir.namespace | default \"auto\" }}"
-    - name: MIMIR_API_URL
-      value: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
-    - name: MIMIR_AUTO_DISCOVER
-      value: "{{ .Values.mimir.discovery.autoDetect }}"
-    - name: K8S_IN_CLUSTER
-      value: "true"
-    - name: MIMIR_DISCOVERY_INTERVAL
-      value: "300"
+  containerPort: 8080
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
   config:
     mimir:
       namespace: "{{ .Values.mimir.namespace | default \"auto\" }}"
@@ -649,17 +677,19 @@ backend:
 frontend:
   enabled: true
   image:
-    repository: mimir-insights-frontend
+    repository: ghcr.io/akshaydubey29/mimir-insights-frontend
     tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
+  imagePullSecrets:
+    - name: ghcr-secret
   replicaCount: 2
   resources:
     requests:
-      memory: "128Mi"
-      cpu: "100m"
+      cpu: 100m
+      memory: 128Mi
     limits:
-      memory: "256Mi"
-      cpu: "200m"
+      cpu: 200m
+      memory: 256Mi
   env:
     - name: REACT_APP_API_BASE_URL
       value: "/api"
@@ -671,11 +701,17 @@ frontend:
       value: "false"
     - name: LOCAL_DEV
       value: "false"
+    - name: ENVIRONMENT
+      value: "production"
+    - name: API_BASE_URL
+      value: "/api"
+    - name: NODE_ENV
+      value: "production"
   service:
     type: ClusterIP
     port: 80
+    targetPort: 80
   livenessProbe:
-    enabled: true
     httpGet:
       path: /healthz
       port: 80
@@ -684,14 +720,21 @@ frontend:
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
-    enabled: true
     httpGet:
-      path: /healthz
+      path: /
       port: 80
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
 
 # Ingress configuration
 ingress:

@@ -28,29 +28,38 @@ spec:
         {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "mimir-insights.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-backend
+          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: {{ .Values.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+          {{- if .Values.backend.env }}
           env:
-            {{- toYaml .Values.backend.env | nindent 12 }}
+            {{- range .Values.backend.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
-          {{- if .Values.probes.livenessProbe }}
+          {{- if .Values.backend.livenessProbe.enabled }}
           livenessProbe:
-            {{- toYaml .Values.probes.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           {{- end }}
-          {{- if .Values.probes.readinessProbe }}
+          {{- if .Values.backend.readinessProbe.enabled }}
           readinessProbe:
-            {{- toYaml .Values.probes.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: config

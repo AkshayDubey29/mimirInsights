@@ -1,79 +1,262 @@
-# Production Helm Values for MimirInsights - AWS ALB Configuration
-# Configured for AWS Application Load Balancer with proper annotations
+# Production Helm Values for MimirInsights with AWS ALB Ingress
+# Monitoring and LLM features disabled for production stability
 
+# Global settings
 global:
   namespace: mimir-insights
   imageRegistry: ghcr.io/akshaydubey29
 
+# Namespace configuration
+namespace:
+  enabled: true
+  name: mimir-insights
+  labels:
+    app.kubernetes.io/name: mimir-insights
+    app.kubernetes.io/instance: production
+
+# Mimir configuration - Where the actual Mimir deployment is running
+mimir:
+  # Namespace where Mimir is deployed (auto-discovered if empty or "auto")
+  namespace: "auto"
+  # Auto-discovery configuration
+  discovery:
+    # Enable automatic Mimir namespace detection
+    autoDetect: true
+    # Namespace patterns to search for Mimir (regex supported)
+    namespacePatterns:
+      - "mimir.*"
+      - ".*mimir.*"
+      - "cortex.*"
+      - ".*cortex.*"
+      - "observability.*"
+      - "monitoring.*"
+    # Label selectors to identify Mimir namespaces
+    namespaceLabels:
+      - key: "app.kubernetes.io/name"
+        values: ["mimir", "cortex"]
+      - key: "app.kubernetes.io/part-of"
+        values: ["mimir", "cortex", "observability"]
+    # Component discovery patterns
+    componentPatterns:
+      distributor: [".*distributor.*", ".*dist.*"]
+      ingester: [".*ingester.*", ".*ingest.*"]
+      querier: [".*querier.*", ".*query.*", ".*frontend.*"]
+      compactor: [".*compactor.*", ".*compact.*"]
+      ruler: [".*ruler.*", ".*rule.*"]
+      alertmanager: [".*alertmanager.*", ".*alert.*"]
+      store_gateway: [".*store.*gateway.*", ".*gateway.*"]
+    # Service discovery patterns
+    servicePatterns:
+      - "mimir-.*"
+      - "cortex-.*"
+      - ".*-mimir-.*"
+      - ".*-cortex-.*"
+    # ConfigMap patterns
+    configMapPatterns:
+      - ".*mimir.*config.*"
+      - ".*cortex.*config.*"
+      - ".*runtime.*overrides.*"
+      - ".*limits.*config.*"
+  # API configuration
+  api:
+    # Service name pattern for distributor (auto-discovered if empty)
+    distributorService: ""
+    # Default port for Mimir components
+    port: 9090
+    # Timeout for API calls
+    timeout: 30
+    # Paths to try for metrics endpoints
+    metricsPaths:
+      - "/metrics"
+      - "/api/v1/query"
+      - "/prometheus/api/v1/query"
+
+# Image pull secrets for private registry
+imagePullSecrets:
+  - name: ghcr-secret
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "false"
+  prometheus.io/port: "8080"
+
+# Node selector for production nodes
+nodeSelector:
+  kubernetes.io/os: linux
+  node-role.kubernetes.io/worker: "true"
+
+# Affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - mimir-insights
+        topologyKey: kubernetes.io/hostname
+
+# Tolerations for production nodes
+tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  supplementalGroups: [1000]
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# Backend configuration
 backend:
   enabled: true
   image:
-    repository: mimir-insights-backend
+    repository: ghcr.io/akshaydubey29/mimir-insights-backend
     tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
+  imagePullSecrets:
+    - name: ghcr-secret
   replicaCount: 2
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "250m"
+      cpu: 200m
+      memory: 256Mi
     limits:
-      memory: "512Mi"
-      cpu: "500m"
-  env:
-    LOG_LEVEL: "info"
-    DISCOVERY_INTERVAL: "300"
-    METRICS_ENABLED: "false"
-    LLM_ENABLED: "false"
+      cpu: 500m
+      memory: 512Mi
   service:
     type: ClusterIP
     port: 8080
+    targetPort: 8080
+  env:
+    - name: MIMIR_NAMESPACE
+      value: "auto"
+    - name: MIMIR_DISCOVERY_ENABLED
+      value: "true"
+    - name: MIMIR_DISCOVERY_NAMESPACE_PATTERNS
+      value: ".*-mimir-.*,.*-obs-.*,.*-platform.*,.*-monitoring.*,.*-metrics.*,.*-observability.*,mimir,cortex,observability,monitoring,metrics,platform"
+    - name: MIMIR_DISCOVERY_LABEL_SELECTORS
+      value: "app.kubernetes.io/name~=mimir,app.kubernetes.io/name~=cortex,app.kubernetes.io/name~=observability,app.kubernetes.io/name~=monitoring,app.kubernetes.io/name~=metrics,app.kubernetes.io/name~=platform,app~=mimir,app~=cortex,app~=observability,app~=monitoring,app~=metrics,app~=platform"
+    - name: MIMIR_DISCOVERY_COMPONENT_PATTERNS
+      value: ".*-distributor.*,.*-ingester.*,.*-querier.*,.*-compactor.*,.*-ruler.*,.*-alertmanager.*,.*-store-gateway.*,.*-memcached.*,.*-consul.*,.*-etcd.*,.*-nginx.*,distributor,ingester,querier,compactor,ruler,alertmanager,store-gateway,memcached,consul,etcd,nginx"
+    - name: MIMIR_DISCOVERY_SERVICE_PATTERNS
+      value: ".*-distributor.*,.*-ingester.*,.*-querier.*,.*-compactor.*,.*-ruler.*,.*-alertmanager.*,.*-store-gateway.*,.*-memcached.*,.*-consul.*,.*-etcd.*,.*-nginx.*,distributor,ingester,querier,compactor,ruler,alertmanager,store-gateway,memcached,consul,etcd,nginx"
+    - name: MIMIR_DISCOVERY_CONFIG_PATTERNS
+      value: ".*-mimir.*,.*-cortex.*,.*-observability.*,.*-monitoring.*,.*-metrics.*,.*-platform.*,mimir,cortex,observability,monitoring,metrics,platform"
+    - name: ENVIRONMENT
+      value: "production"
+    - name: LOG_LEVEL
+      value: "info"
+    - name: API_BASE_PATH
+      value: "/api"
+    - name: ENABLE_MONITORING
+      value: "false"
+    - name: ENABLE_LLM
+      value: "false"
+  containerPort: 8080
   livenessProbe:
-    enabled: true
+    httpGet:
+      path: /healthz
+      port: 8080
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
-    enabled: true
+    httpGet:
+      path: /ready
+      port: 8080
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
 
+# Frontend configuration
 frontend:
   enabled: true
   image:
-    repository: mimir-insights-frontend
+    repository: ghcr.io/akshaydubey29/mimir-insights-frontend
     tag: "v1.0.0-20250718-110355"
     pullPolicy: Always
+  imagePullSecrets:
+    - name: ghcr-secret
   replicaCount: 2
   resources:
     requests:
-      memory: "128Mi"
-      cpu: "100m"
+      cpu: 100m
+      memory: 128Mi
     limits:
-      memory: "256Mi"
-      cpu: "200m"
-  env:
-    REACT_APP_API_BASE_URL: "/api"
-    REACT_APP_ENABLE_MOCK_DATA: "false"
-    REACT_APP_ENABLE_MONITORING: "false"
-    REACT_APP_ENABLE_LLM: "false"
+      cpu: 200m
+      memory: 256Mi
   service:
     type: ClusterIP
     port: 80
+    targetPort: 80
+  env:
+    - name: REACT_APP_API_BASE_URL
+      value: "/api"
+    - name: REACT_APP_ENABLE_MOCK_DATA
+      value: "false"
+    - name: REACT_APP_ENABLE_MONITORING
+      value: "false"
+    - name: REACT_APP_ENABLE_LLM
+      value: "false"
+    - name: LOCAL_DEV
+      value: "false"
+    - name: ENVIRONMENT
+      value: "production"
+    - name: API_BASE_URL
+      value: "/api"
+    - name: NODE_ENV
+      value: "production"
+  containerPort: 80
   livenessProbe:
-    enabled: true
+    httpGet:
+      path: /healthz
+      port: 80
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
-    enabled: true
+    httpGet:
+      path: /
+      port: 80
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
 
 # AWS ALB Ingress Configuration
 ingress:
@@ -85,7 +268,7 @@ ingress:
     
     # Health check configuration
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
-    alb.ingress.kubernetes.io/healthcheck-port: "8081"
+    alb.ingress.kubernetes.io/healthcheck-port: "80"
     alb.ingress.kubernetes.io/success-codes: "200"
     
     # Network configuration
@@ -132,15 +315,20 @@ ingress:
       hosts:
         - mimir-insights.yourdomain.com
 
+# RBAC configuration
 rbac:
   enabled: true
   create: true
 
+# Service account configuration
 serviceAccount:
   enabled: true
   create: true
   name: mimir-insights
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::138978013424:role/mimir-insights-role
 
+# Horizontal Pod Autoscaler
 hpa:
   enabled: true
   backend:
@@ -217,4 +405,23 @@ priorityClass:
   enabled: true
   value: 1000
   globalDefault: false
-  description: "High priority for MimirInsights pods" 
+  description: "High priority for MimirInsights pods"
+
+# Probes configuration
+probes:
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3 

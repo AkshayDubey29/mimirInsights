@@ -27,17 +27,25 @@ spec:
       imagePullSecrets:
         {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-frontend
+          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          image: {{ .Values.imageRegistry }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.global.imageRegistry }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          {{- if .Values.frontend.env }}
           env:
-            - name: LOCAL_DEV
-              value: "true"
+            {{- range .Values.frontend.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 80
@@ -49,25 +57,13 @@ spec:
               readOnly: true
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
-          {{- if .Values.probes.livenessProbe }}
+          {{- if .Values.frontend.livenessProbe.enabled }}
           livenessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            {{- toYaml .Values.frontend.livenessProbe | nindent 12 }}
           {{- end }}
-          {{- if .Values.probes.readinessProbe }}
+          {{- if .Values.frontend.readinessProbe.enabled }}
           readinessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+            {{- toYaml .Values.frontend.readinessProbe | nindent 12 }}
           {{- end }}
       volumes:
         - name: frontend-config
