@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -436,6 +437,9 @@ func (ed *EnvironmentDetector) analyzeDataSources(env *EnvironmentInfo) {
 	realDataCount := 0
 	mockDataCount := 0
 
+	// Check if we can connect to Mimir API for real metrics
+	hasRealMimirConnection := ed.checkMimirConnectivity(env.MimirNamespace)
+
 	for _, tenant := range env.DetectedTenants {
 		if tenant.HasRealData {
 			realDataCount++
@@ -444,7 +448,11 @@ func (ed *EnvironmentDetector) analyzeDataSources(env *EnvironmentInfo) {
 		}
 	}
 
-	if realDataCount > 0 && mockDataCount == 0 {
+	// If we have real Mimir connection, prioritize production data source
+	if hasRealMimirConnection {
+		env.DataSource = "production"
+		env.EnvironmentDetails["mimir_connectivity"] = "connected"
+	} else if realDataCount > 0 && mockDataCount == 0 {
 		env.DataSource = "production"
 	} else if realDataCount == 0 && mockDataCount > 0 {
 		env.DataSource = "mock"
@@ -456,4 +464,34 @@ func (ed *EnvironmentDetector) analyzeDataSources(env *EnvironmentInfo) {
 
 	env.EnvironmentDetails["real_data_count"] = realDataCount
 	env.EnvironmentDetails["mock_data_count"] = mockDataCount
+	env.EnvironmentDetails["has_real_mimir_connection"] = hasRealMimirConnection
+}
+
+// checkMimirConnectivity checks if we can connect to Mimir API
+func (ed *EnvironmentDetector) checkMimirConnectivity(mimirNamespace string) bool {
+	// Try to connect to Mimir services
+	services := []string{
+		fmt.Sprintf("http://mimir-querier.%s.svc.cluster.local:9009", mimirNamespace),
+		fmt.Sprintf("http://mimir-distributor.%s.svc.cluster.local:9009", mimirNamespace),
+		fmt.Sprintf("http://mimir-ingester.%s.svc.cluster.local:9009", mimirNamespace),
+	}
+
+	for _, serviceURL := range services {
+		// Create a simple HTTP client to test connectivity
+		client := &http.Client{
+			Timeout: 5 * time.Second,
+		}
+
+		// Try to get metrics endpoint
+		resp, err := client.Get(serviceURL + "/metrics")
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return true
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}
+
+	return false
 }

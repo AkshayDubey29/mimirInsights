@@ -29,6 +29,7 @@ type MimirConfig struct {
 	Namespace string          `mapstructure:"namespace"`
 	APIURL    string          `mapstructure:"api_url"`
 	Timeout   int             `mapstructure:"timeout"`
+	OrgID     string          `mapstructure:"org_id"`
 	Discovery DiscoveryConfig `mapstructure:"discovery"`
 	API       APIConfig       `mapstructure:"api"`
 }
@@ -145,6 +146,7 @@ func setDefaults() {
 	viper.SetDefault("mimir.namespace", "mimir")
 	viper.SetDefault("mimir.api_url", "http://mimir-distributor:9090")
 	viper.SetDefault("mimir.timeout", 30)
+	viper.SetDefault("mimir.org_id", "default")
 
 	// Mimir Discovery defaults
 	viper.SetDefault("mimir.discovery.auto_detect", true)

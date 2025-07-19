@@ -62,6 +62,12 @@ export const metricsService = {
   async getMetricsSummary(): Promise<ApiResponse<any>> {
     return apiClient.get(`${config.endpoints.metrics}/summary`);
   },
+
+  async getRealMetrics(timeRange?: string): Promise<ApiResponse<any>> {
+    const params = new URLSearchParams();
+    if (timeRange) params.append('timeRange', timeRange);
+    return apiClient.get(`${config.endpoints.metrics}/real?${params.toString()}`);
+  },
 };
 
 export const limitsService = {
@@ -190,4 +196,4 @@ export const reportsService = {
   async getCapacityPlanning(): Promise<ApiResponse<any>> {
     return apiClient.get(`${config.endpoints.reports}/capacity-planning`);
   },
-}; 
+};

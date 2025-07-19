@@ -1517,3 +1517,47 @@ func (s *Server) ResetMemoryStats(c *gin.Context) {
 		"timestamp": time.Now(),
 	})
 }
+
+// GetRealMetrics returns real metrics data from Mimir endpoints
+func (s *Server) GetRealMetrics(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	logrus.Infof("🔍 [API] GetRealMetrics called from %s", c.ClientIP())
+	logrus.Infof("📋 [API] GetRealMetrics: Starting real metrics collection")
+
+	// Get time range from query parameters
+	timeRangeStr := c.DefaultQuery("timeRange", "1h")
+	var timeRange metrics.TimeRange
+
+	switch timeRangeStr {
+	case "1h":
+		timeRange = metrics.CreateTimeRange(1*time.Hour, "1m")
+	case "6h":
+		timeRange = metrics.CreateTimeRange(6*time.Hour, "5m")
+	case "24h":
+		timeRange = metrics.CreateTimeRange(24*time.Hour, "15m")
+	case "7d":
+		timeRange = metrics.CreateTimeRange(7*24*time.Hour, "1h")
+	default:
+		timeRange = metrics.CreateTimeRange(1*time.Hour, "1m")
+	}
+
+	// Get real metrics data
+	productionData, err := s.metricsClient.GetProductionMetricsData(ctx, timeRange)
+	if err != nil {
+		logrus.Errorf("❌ [API] GetRealMetrics: Failed to get production metrics: %v", err)
+		s.recordError(c, "metrics_collection_failed", start)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to collect real metrics",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	logrus.Infof("✅ [API] GetRealMetrics: Successfully collected real metrics data")
+	logrus.Infof("📊 [API] GetRealMetrics: Response time: %v", time.Since(start))
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, productionData)
+}

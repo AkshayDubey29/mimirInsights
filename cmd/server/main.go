@@ -64,6 +64,7 @@ func main() {
 		apiGroup.GET("/discovery/comprehensive", server.GetComprehensiveTenantDiscovery) // Added comprehensive tenant discovery endpoint
 		apiGroup.GET("/discovery/mimir", server.GetComprehensiveMimirDiscovery)          // Added comprehensive Mimir discovery endpoint
 		apiGroup.GET("/metrics", server.GetMetrics)
+		apiGroup.GET("/metrics/real", server.GetRealMetrics)
 		apiGroup.GET("/metrics/discovery", server.GetAutoDiscoveredMetrics)
 		apiGroup.GET("/audit", server.GetAuditLogs)
 		apiGroup.POST("/analyze", server.AnalyzeTenant)

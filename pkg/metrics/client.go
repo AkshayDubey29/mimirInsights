@@ -86,8 +86,8 @@ func NewClient() *Client {
 
 // QueryMetrics executes a Prometheus query
 func (c *Client) QueryMetrics(ctx context.Context, query MetricQuery) (*MetricResponse, error) {
-	// Build query URL
-	u, err := url.Parse(c.baseURL + "/api/v1/query_range")
+	// Build query URL - use the correct Mimir API path
+	u, err := url.Parse(c.baseURL + "/prometheus/api/v1/query_range")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse URL: %w", err)
 	}
@@ -98,16 +98,17 @@ func (c *Client) QueryMetrics(ctx context.Context, query MetricQuery) (*MetricRe
 	q.Set("end", query.End.Format(time.RFC3339))
 	q.Set("step", query.Step)
 
-	if query.Tenant != "" {
-		q.Set("tenant", query.Tenant)
-	}
-
 	u.RawQuery = q.Encode()
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add X-Scope-OrgID header for multi-tenant Mimir
+	if c.config.Mimir.OrgID != "" {
+		req.Header.Set("X-Scope-OrgID", c.config.Mimir.OrgID)
 	}
 
 	// Execute request
@@ -372,4 +373,112 @@ func GetStandardTimeRanges() map[string]TimeRange {
 		"30d": CreateTimeRange(30*24*time.Hour, "1h"),
 		"60d": CreateTimeRange(60*24*time.Hour, "2h"),
 	}
+}
+
+// GetRealMetricsFromEndpoints collects real metrics from all discovered Mimir endpoints
+func (c *Client) GetRealMetricsFromEndpoints(ctx context.Context, endpoints []string, timeRange TimeRange) (map[string]*TenantMetrics, error) {
+	logrus.Infof("Collecting real metrics from %d discovered Mimir endpoints", len(endpoints))
+
+	allMetrics := make(map[string]*TenantMetrics)
+
+	// For each endpoint, try to collect metrics
+	for _, endpoint := range endpoints {
+		logrus.Infof("Querying metrics from endpoint: %s", endpoint)
+
+		// Temporarily update the base URL for this endpoint
+		originalBaseURL := c.baseURL
+		c.baseURL = endpoint
+
+		// Try to get basic metrics to test connectivity
+		query := MetricQuery{
+			Query: "up",
+			Start: timeRange.Start,
+			End:   timeRange.End,
+			Step:  timeRange.Step,
+		}
+
+		_, err := c.QueryMetrics(ctx, query)
+		if err != nil {
+			logrus.Warnf("Failed to query endpoint %s: %v", endpoint, err)
+			c.baseURL = originalBaseURL
+			continue
+		}
+
+		logrus.Infof("Successfully connected to endpoint: %s", endpoint)
+
+		// Try to get tenant-specific metrics
+		// For now, we'll use a default tenant name since we're in single-tenant mode
+		tenantName := "default"
+
+		tenantMetrics := &TenantMetrics{
+			TenantName: tenantName,
+			TimeRange:  timeRange,
+			Metrics:    make(map[string][]MetricSeries),
+		}
+
+		// Collect various metrics
+		metricsToCollect := map[string]string{
+			"ingestion_rate":   "cortex_distributor_ingestion_rate",
+			"rejected_samples": "cortex_distributor_rejected_samples_total",
+			"active_series":    "cortex_ingester_active_series",
+			"memory_usage":     "cortex_ingester_memory_usage_bytes",
+			"limits_reached":   "cortex_distributor_tenant_limits_reached_total",
+			"process_memory":   "process_resident_memory_bytes",
+			"build_info":       "cortex_build_info",
+		}
+
+		for metricName, queryString := range metricsToCollect {
+			query := MetricQuery{
+				Query: queryString,
+				Start: timeRange.Start,
+				End:   timeRange.End,
+				Step:  timeRange.Step,
+			}
+
+			resp, err := c.QueryMetrics(ctx, query)
+			if err != nil {
+				logrus.Debugf("Failed to get %s from %s: %v", metricName, endpoint, err)
+				continue
+			}
+
+			series := c.parseMetricResponse(resp, metricName)
+			if len(series) > 0 {
+				tenantMetrics.Metrics[metricName] = series
+				logrus.Infof("Collected %d series for %s from %s", len(series), metricName, endpoint)
+			}
+		}
+
+		allMetrics[endpoint] = tenantMetrics
+		c.baseURL = originalBaseURL
+	}
+
+	logrus.Infof("Successfully collected metrics from %d endpoints", len(allMetrics))
+	return allMetrics, nil
+}
+
+// GetProductionMetricsData returns production metrics data with real Mimir data
+func (c *Client) GetProductionMetricsData(ctx context.Context, timeRange TimeRange) (map[string]interface{}, error) {
+	logrus.Infof("Getting production metrics data")
+
+	// Get discovered endpoints from discovery engine
+	// For now, we'll use the configured base URL and try to discover endpoints
+	endpoints := []string{c.baseURL}
+
+	// Try to collect real metrics
+	realMetrics, err := c.GetRealMetricsFromEndpoints(ctx, endpoints, timeRange)
+	if err != nil {
+		logrus.Warnf("Failed to collect real metrics: %v", err)
+		return nil, err
+	}
+
+	// Convert to a format suitable for the UI
+	productionData := map[string]interface{}{
+		"data_source":  "production",
+		"endpoints":    endpoints,
+		"metrics":      realMetrics,
+		"time_range":   timeRange,
+		"collected_at": time.Now().UTC(),
+	}
+
+	return productionData, nil
 }

@@ -17,6 +17,8 @@ namespace:
 mimir:
   # Namespace where Mimir is deployed (auto-discovered if empty or "auto")
   namespace: "auto"
+  # Organization ID for multi-tenant Mimir (X-Scope-OrgID header)
+  orgId: "default"
   # Auto-discovery configuration
   discovery:
     # Enable automatic Mimir namespace detection
@@ -570,6 +572,10 @@ backend:
   env:
     - name: MIMIR_NAMESPACE
       value: "auto"
+    - name: MIMIR_API_URL
+      value: "http://mimir-querier.mimir.svc.cluster.local:9009"
+    - name: MIMIR_ORG_ID
+      value: "default"
     - name: MIMIR_DISCOVERY_ENABLED
       value: "true"
     - name: MIMIR_DISCOVERY_NAMESPACE_PATTERNS
@@ -620,7 +626,8 @@ backend:
   config:
     mimir:
       namespace: "{{ .Values.mimir.namespace | default \"auto\" }}"
-      api_url: "{{ .Values.mimir.api.distributorService | default \"auto\" }}"
+      api_url: "http://mimir-querier.mimir.svc.cluster.local:9009"
+      org_id: "{{ .Values.mimir.orgId | default \"default\" }}"
       timeout: "{{ .Values.mimir.api.timeout }}"
       discovery:
         auto_detect: "{{ .Values.mimir.discovery.autoDetect }}"
