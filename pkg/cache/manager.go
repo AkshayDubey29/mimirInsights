@@ -168,25 +168,48 @@ func (m *Manager) collectAllData(ctx context.Context) error {
 	logrus.Infof("✅ [CACHE] Discovery completed: %d tenants, %d Mimir components",
 		len(discoveryResult.TenantNamespaces), len(discoveryResult.MimirComponents))
 
-	// Collect metrics for all tenants
+	// Collect metrics for all tenants (including detected tenants)
 	tenantMetrics := make(map[string]*TenantMetricsData)
-	tenantNames := make([]string, 0, len(discoveryResult.TenantNamespaces))
+	tenantNames := make([]string, 0)
 
-	logrus.Infof("📊 [CACHE] Collecting metrics for %d tenants...", len(discoveryResult.TenantNamespaces))
+	// Add discovered tenant namespaces
 	for _, tenant := range discoveryResult.TenantNamespaces {
 		tenantNames = append(tenantNames, tenant.Name)
-		logrus.Debugf("📈 [CACHE] Collecting metrics for tenant: %s", tenant.Name)
-		metricsData, err := m.collectTenantMetrics(ctx, tenant.Name)
+	}
+
+	// Add detected tenants from environment
+	if discoveryResult.Environment != nil && discoveryResult.Environment.DetectedTenants != nil {
+		logrus.Infof("🔍 [CACHE] Found %d detected tenants in environment", len(discoveryResult.Environment.DetectedTenants))
+		for _, detectedTenant := range discoveryResult.Environment.DetectedTenants {
+			// Check if this tenant is already in the list
+			exists := false
+			for _, existingTenant := range tenantNames {
+				if existingTenant == detectedTenant.Name {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				tenantNames = append(tenantNames, detectedTenant.Name)
+				logrus.Debugf("📋 [CACHE] Added detected tenant: %s", detectedTenant.Name)
+			}
+		}
+	}
+
+	logrus.Infof("📊 [CACHE] Collecting metrics for %d total tenants...", len(tenantNames))
+	for _, tenantName := range tenantNames {
+		logrus.Debugf("📈 [CACHE] Collecting metrics for tenant: %s", tenantName)
+		metricsData, err := m.collectTenantMetrics(ctx, tenantName)
 		if err != nil {
-			logrus.Warnf("⚠️ [CACHE] Failed to collect metrics for tenant %s: %v", tenant.Name, err)
+			logrus.Warnf("⚠️ [CACHE] Failed to collect metrics for tenant %s: %v", tenantName, err)
 			metricsData = &TenantMetricsData{
 				CollectionErrors: []string{err.Error()},
 				LastUpdated:      time.Now(),
 			}
 		} else {
-			logrus.Debugf("✅ [CACHE] Successfully collected metrics for tenant: %s", tenant.Name)
+			logrus.Debugf("✅ [CACHE] Successfully collected metrics for tenant: %s", tenantName)
 		}
-		tenantMetrics[tenant.Name] = metricsData
+		tenantMetrics[tenantName] = metricsData
 	}
 
 	// Collect limits analysis
