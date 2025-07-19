@@ -676,6 +676,9 @@ backend:
 frontend:
   enabled: true
   image: ghcr.io/akshaydubey29/mimir-insights-frontend:20250719-121834
+  env:
+    - name: BACKEND_SERVICE_NAME
+      value: "couguard-mimir-insights-backend"
   replicaCount: 1
   resources:
     requests:
