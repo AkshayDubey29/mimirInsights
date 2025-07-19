@@ -56,6 +56,8 @@ import {
   PlayArrow as PlayArrowIcon,
   Pause as PauseIcon,
   RestartAlt as RestartAltIcon,
+  People as PeopleIcon,
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import {
   LineChart,
