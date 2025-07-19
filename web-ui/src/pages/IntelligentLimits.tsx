@@ -36,7 +36,7 @@ import {
   Settings,
   Refresh,
   PriorityHigh,
-  PriorityLow,
+  CheckCircleOutline,
 } from '@mui/icons-material';
 import { useIntelligentLimits } from '../api/useIntelligentLimits';
 
@@ -93,7 +93,7 @@ const IntelligentLimits: React.FC = () => {
       case 'medium':
         return <Info />;
       case 'low':
-        return <PriorityLow color="success" />;
+        return <CheckCircleOutline color="success" />;
       default:
         return <Info />;
     }
