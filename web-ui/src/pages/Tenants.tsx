@@ -430,7 +430,7 @@ const Tenants: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`${config.apiBaseUrl}/api/tenants`, {
+      const response = await fetch(`${config.apiUrl}/api/tenants`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

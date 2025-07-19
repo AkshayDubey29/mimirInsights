@@ -17,7 +17,7 @@ class ApiClient {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = config.apiBaseUrl;
+    this.baseUrl = config.apiUrl;
   }
 
   private async request<T>(
