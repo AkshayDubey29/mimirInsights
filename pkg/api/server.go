@@ -1121,16 +1121,16 @@ func (s *Server) GetComprehensiveTenantDiscovery(c *gin.Context) {
 	logrus.Infof("🔍 [API] GetComprehensiveTenantDiscovery called from %s", c.ClientIP())
 	logrus.Infof("📋 [API] GetComprehensiveTenantDiscovery: Starting multi-strategy tenant discovery")
 
-	// Perform comprehensive tenant discovery
-	result, err := s.discoveryEngine.DiscoverTenantsComprehensive(ctx)
+	// Get cached tenant discovery results
+	result, err := s.discoveryEngine.GetTenantDiscovery(ctx)
 	if err != nil {
-		logrus.Errorf("❌ [API] GetComprehensiveTenantDiscovery: Failed to discover tenants: %v", err)
+		logrus.Errorf("❌ [API] GetComprehensiveTenantDiscovery: Failed to get tenant discovery: %v", err)
 		s.recordError(c, "discovery_error", start)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	logrus.Infof("✅ [API] GetComprehensiveTenantDiscovery: Discovery completed successfully")
+	logrus.Infof("✅ [API] GetComprehensiveTenantDiscovery: Tenant discovery served from cache")
 	logrus.Infof("📊 [API] GetComprehensiveTenantDiscovery: Found %d tenants using %d strategies",
 		len(result.ConsolidatedTenants), len(result.Strategies))
 
@@ -1146,21 +1146,62 @@ func (s *Server) GetComprehensiveMimirDiscovery(c *gin.Context) {
 	logrus.Infof("🔍 [API] GetComprehensiveMimirDiscovery called from %s", c.ClientIP())
 	logrus.Infof("📋 [API] GetComprehensiveMimirDiscovery: Starting multi-strategy Mimir discovery")
 
-	// Perform comprehensive Mimir discovery
-	result, err := s.discoveryEngine.DiscoverMimirComprehensive(ctx)
+	// Get cached Mimir discovery results
+	result, err := s.discoveryEngine.GetMimirDiscovery(ctx)
 	if err != nil {
-		logrus.Errorf("❌ [API] GetComprehensiveMimirDiscovery: Failed to discover Mimir components: %v", err)
+		logrus.Errorf("❌ [API] GetComprehensiveMimirDiscovery: Failed to get Mimir discovery: %v", err)
 		s.recordError(c, "mimir_discovery_error", start)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	logrus.Infof("✅ [API] GetComprehensiveMimirDiscovery: Mimir discovery completed successfully")
+	logrus.Infof("✅ [API] GetComprehensiveMimirDiscovery: Mimir discovery served from cache")
 	logrus.Infof("📊 [API] GetComprehensiveMimirDiscovery: Found %d Mimir components using %d strategies",
 		len(result.ConsolidatedComponents), len(result.Strategies))
 
 	s.recordMetrics(c, http.StatusOK, start)
 	c.JSON(http.StatusOK, result)
+}
+
+// GetDiscoveryCacheStatus returns the current status of discovery caches
+func (s *Server) GetDiscoveryCacheStatus(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] GetDiscoveryCacheStatus called from %s", c.ClientIP())
+
+	// Get cache status from discovery engine
+	cacheStatus := s.discoveryEngine.GetCacheStatus()
+
+	logrus.Infof("✅ [API] GetDiscoveryCacheStatus: Cache status retrieved successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, cacheStatus)
+}
+
+// RefreshDiscoveryCache forces a refresh of all discovery caches
+func (s *Server) RefreshDiscoveryCache(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	logrus.Infof("🔍 [API] RefreshDiscoveryCache called from %s", c.ClientIP())
+	logrus.Info("🔄 [API] RefreshDiscoveryCache: Forcing cache refresh")
+
+	// Force refresh of all discovery caches
+	err := s.discoveryEngine.RefreshCache(ctx)
+	if err != nil {
+		logrus.Errorf("❌ [API] RefreshDiscoveryCache: Failed to refresh cache: %v", err)
+		s.recordError(c, "cache_refresh_error", start)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logrus.Infof("✅ [API] RefreshDiscoveryCache: Cache refresh completed successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Cache refresh completed successfully",
+		"timestamp": time.Now(),
+	})
 }
 
 // GetDiscoveryDetails returns comprehensive discovery information
