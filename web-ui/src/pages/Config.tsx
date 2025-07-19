@@ -20,7 +20,7 @@ const Config: React.FC = () => {
       <Typography variant="h4" gutterBottom>Configuration Audit & Drift Detection</Typography>
       <div style={{ height: 400, width: '100%' }}>
         <DataGrid
-          rows={configs.map((c: any, i: number) => ({ id: i, ...c }))}
+          rows={(configs || []).map((c: any, i: number) => ({ id: i, ...c }))}
           columns={columns}
           pageSize={5}
           rowsPerPageOptions={[5]}
