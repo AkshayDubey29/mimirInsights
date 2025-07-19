@@ -17,7 +17,7 @@ export const config = {
   useMockData: runtimeConfig.useMockData || process.env.REACT_APP_USE_MOCK_DATA === 'true',
   // Environment
   environment: process.env.NODE_ENV || 'development',
-  // API endpoints
+  // API endpoints - include /api prefix since apiBaseUrl points to backend root
   endpoints: {
     tenants: '/api/tenants',
     metrics: '/api/metrics',

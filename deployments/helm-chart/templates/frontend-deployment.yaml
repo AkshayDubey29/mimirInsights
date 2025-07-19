@@ -52,7 +52,7 @@ spec:
               protocol: TCP
           volumeMounts:
             - name: frontend-config
-              mountPath: /usr/share/nginx/html/config.js
+              mountPath: /usr/share/nginx/html/config/config.js
               subPath: config.js
               readOnly: true
             - name: nginx-tmp

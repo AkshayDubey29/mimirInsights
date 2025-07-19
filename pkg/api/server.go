@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/akshaydubey29/mimirInsights/pkg/cache"
 	"github.com/akshaydubey29/mimirInsights/pkg/capacity"
 	"github.com/akshaydubey29/mimirInsights/pkg/discovery"
 	"github.com/akshaydubey29/mimirInsights/pkg/drift"
@@ -25,6 +26,7 @@ type Server struct {
 	discoveryEngine *discovery.Engine
 	metricsClient   *metrics.Client
 	limitsAnalyzer  *limits.Analyzer
+	cacheManager    *cache.Manager
 	driftDetector   *drift.Detector
 	alloyTuner      *tuning.AlloyTuner
 	capacityPlanner *capacity.Planner
@@ -75,10 +77,14 @@ func NewServer(discoveryEngine *discovery.Engine, metricsClient *metrics.Client,
 		EnableAlerting: false, // Disable by default
 	}
 
-	return &Server{
+	// Create cache manager
+	cacheManager := cache.NewManager(discoveryEngine, metricsClient, limitsAnalyzer)
+
+	server := &Server{
 		discoveryEngine: discoveryEngine,
 		metricsClient:   metricsClient,
 		limitsAnalyzer:  limitsAnalyzer,
+		cacheManager:    cacheManager,
 		driftDetector:   drift.NewDetector(discoveryEngine.GetK8sClient()),
 		alloyTuner:      tuning.NewAlloyTuner(discoveryEngine.GetK8sClient()),
 		capacityPlanner: capacity.NewPlanner(metricsClient, limitsAnalyzer),
@@ -88,6 +94,15 @@ func NewServer(discoveryEngine *discovery.Engine, metricsClient *metrics.Client,
 		requestDuration: requestDuration,
 		errorCounter:    errorCounter,
 	}
+
+	// Start cache manager in background
+	go func() {
+		if err := cacheManager.Start(context.Background()); err != nil {
+			logrus.Errorf("Failed to start cache manager: %v", err)
+		}
+	}()
+
+	return server
 }
 
 // HealthCheck returns the health status of the service
@@ -104,19 +119,36 @@ func (s *Server) HealthCheck(c *gin.Context) {
 // GetTenants returns all discovered tenant namespaces
 func (s *Server) GetTenants(c *gin.Context) {
 	start := time.Now()
-	ctx := c.Request.Context()
 
-	// Perform discovery
-	result, err := s.discoveryEngine.DiscoverAll(ctx)
-	if err != nil {
-		s.recordError(c, "discovery_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	logrus.Infof("🔍 [API] GetTenants called from %s", c.ClientIP())
+	logrus.Infof("📋 [API] GetTenants: Starting tenant discovery process")
+
+	// Get cached discovery data
+	discoveryResult := s.cacheManager.GetDiscoveryResult()
+	if discoveryResult == nil {
+		logrus.Warnf("❌ [API] GetTenants: Cache not ready - no discovery result available")
+		s.recordError(c, "cache_not_ready", start)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
 		return
 	}
 
-	// Extract tenant information
-	tenants := make([]map[string]interface{}, 0, len(result.TenantNamespaces))
-	for _, tenant := range result.TenantNamespaces {
+	logrus.Infof("✅ [API] GetTenants: Cache ready, found %d tenants in cache", len(discoveryResult.TenantNamespaces))
+	logrus.Infof("📊 [API] GetTenants: Discovery details - Mimir components: %d, ConfigMaps: %d",
+		len(discoveryResult.MimirComponents), len(discoveryResult.ConfigMaps))
+
+	// Log environment information
+	if discoveryResult.Environment != nil {
+		logrus.Infof("🌍 [API] GetTenants: Environment - Namespace: %s, Total namespaces: %d, Is production: %v",
+			discoveryResult.Environment.MimirNamespace,
+			discoveryResult.Environment.TotalNamespaces,
+			discoveryResult.Environment.IsProduction)
+	}
+
+	// Extract tenant information with detailed logging
+	tenants := make([]map[string]interface{}, 0, len(discoveryResult.TenantNamespaces))
+	for i, tenant := range discoveryResult.TenantNamespaces {
+		logrus.Infof("📋 [API] GetTenants: Processing tenant %d/%d: %s", i+1, len(discoveryResult.TenantNamespaces), tenant.Name)
+
 		tenantInfo := map[string]interface{}{
 			"name":            tenant.Name,
 			"status":          tenant.Status,
@@ -124,9 +156,24 @@ func (s *Server) GetTenants(c *gin.Context) {
 			"labels":          tenant.Labels,
 		}
 		tenants = append(tenants, tenantInfo)
+
+		logrus.Debugf("📋 [API] GetTenants: Tenant %s (status: %s, components: %d, labels: %v)",
+			tenant.Name, tenant.Status, tenant.ComponentCount, tenant.Labels)
 	}
 
-	response := map[string]interface{}{"tenants": tenants, "total_count": len(tenants), "last_updated": result.LastUpdated}
+	response := map[string]interface{}{
+		"tenants":      tenants,
+		"total_count":  len(tenants),
+		"last_updated": discoveryResult.LastUpdated,
+		"discovery_info": map[string]interface{}{
+			"mimir_components_found": len(discoveryResult.MimirComponents),
+			"config_maps_found":      len(discoveryResult.ConfigMaps),
+			"environment":            discoveryResult.Environment,
+		},
+	}
+
+	logrus.Infof("✅ [API] GetTenants: Returning %d tenants, response time: %v", len(tenants), time.Since(start))
+	logrus.Infof("📊 [API] GetTenants: Response payload size: %d bytes", len(fmt.Sprintf("%+v", response)))
 
 	s.recordMetrics(c, http.StatusOK, start)
 	c.JSON(http.StatusOK, response)
@@ -189,39 +236,66 @@ func (s *Server) CreateTenant(c *gin.Context) {
 // GetLimits returns limit recommendations for all tenants
 func (s *Server) GetLimits(c *gin.Context) {
 	start := time.Now()
-	ctx := c.Request.Context()
 
-	// Get tenant names from query parameter or discover all
+	logrus.Infof("🔍 [API] GetLimits called from %s", c.ClientIP())
+	logrus.Infof("📋 [API] GetLimits: Starting limits analysis process")
+
+	// Get tenant names from query parameter or get all cached
 	tenantParam := c.Query("tenant")
-	var tenantNames []string
+	var limitsSummary map[string]*limits.TenantLimits
 
 	if tenantParam != "" {
-		tenantNames = []string{tenantParam}
-	} else {
-		// Discover all tenants
-		result, err := s.discoveryEngine.DiscoverAll(ctx)
-		if err != nil {
-			s.recordError(c, "discovery_error", start)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logrus.Infof("📋 [API] GetLimits: Requesting limits for specific tenant: %s", tenantParam)
+		// Get specific tenant limits
+		tenantLimits := s.cacheManager.GetTenantLimitsSummary(tenantParam)
+		if tenantLimits == nil {
+			logrus.Warnf("❌ [API] GetLimits: Tenant %s not found in cache", tenantParam)
+			s.recordError(c, "tenant_not_found", start)
+			c.JSON(http.StatusNotFound, gin.H{"error": "Tenant not found"})
 			return
 		}
+		limitsSummary = map[string]*limits.TenantLimits{tenantParam: tenantLimits}
+		logrus.Infof("✅ [API] GetLimits: Found limits for tenant %s", tenantParam)
+		logrus.Debugf("📊 [API] GetLimits: Tenant %s limits - %+v", tenantParam, tenantLimits)
+	} else {
+		logrus.Infof("📋 [API] GetLimits: Requesting limits for all tenants")
+		// Get all cached limits
+		limitsSummary = s.cacheManager.GetLimitsSummary()
+		if limitsSummary == nil {
+			logrus.Warnf("❌ [API] GetLimits: Cache not ready - no limits data available")
+			s.recordError(c, "cache_not_ready", start)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
+			return
+		}
+		logrus.Infof("✅ [API] GetLimits: Found limits for %d tenants", len(limitsSummary))
 
-		for _, tenant := range result.TenantNamespaces {
-			tenantNames = append(tenantNames, tenant.Name)
+		// Log details about each tenant's limits
+		for tenantName, tenantLimits := range limitsSummary {
+			logrus.Debugf("📊 [API] GetLimits: Tenant %s limits - %+v", tenantName, tenantLimits)
 		}
 	}
 
-	// Analyze limits for all tenants
-	limitsSummary, err := s.limitsAnalyzer.GetTenantLimitsSummary(ctx, tenantNames)
-	if err != nil {
-		s.recordError(c, "limits_analysis_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	// Get auto-discovered limits for additional context
+	autoDiscoveredLimits := s.cacheManager.GetAutoDiscoveredLimits()
+	logrus.Infof("🔍 [API] GetLimits: Auto-discovered limits - Global: %d, Tenant: %d, Sources: %d",
+		len(autoDiscoveredLimits.GlobalLimits),
+		len(autoDiscoveredLimits.TenantLimits),
+		len(autoDiscoveredLimits.ConfigSources))
+
+	response := map[string]interface{}{
+		"limits":        limitsSummary,
+		"total_tenants": len(limitsSummary),
+		"timestamp":     time.Now().UTC(),
+		"auto_discovered": map[string]interface{}{
+			"global_limits_count":  len(autoDiscoveredLimits.GlobalLimits),
+			"tenant_limits_count":  len(autoDiscoveredLimits.TenantLimits),
+			"config_sources_count": len(autoDiscoveredLimits.ConfigSources),
+			"last_updated":         autoDiscoveredLimits.LastUpdated,
+		},
 	}
 
-	response := map[string]interface{}{"limits": limitsSummary,
-		"total_tenants": len(limitsSummary), "timestamp": time.Now().UTC(),
-	}
+	logrus.Infof("✅ [API] GetLimits: Returning limits for %d tenants, response time: %v", len(limitsSummary), time.Since(start))
+	logrus.Infof("📊 [API] GetLimits: Response payload size: %d bytes", len(fmt.Sprintf("%+v", response)))
 
 	s.recordMetrics(c, http.StatusOK, start)
 	c.JSON(http.StatusOK, response)
@@ -230,23 +304,22 @@ func (s *Server) GetLimits(c *gin.Context) {
 // GetConfig returns configuration information
 func (s *Server) GetConfig(c *gin.Context) {
 	start := time.Now()
-	ctx := c.Request.Context()
 
-	// Get discovery result
-	result, err := s.discoveryEngine.DiscoverAll(ctx)
-	if err != nil {
-		s.recordError(c, "discovery_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Get cached discovery data
+	discoveryResult := s.cacheManager.GetDiscoveryResult()
+	if discoveryResult == nil {
+		s.recordError(c, "cache_not_ready", start)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
 		return
 	}
 
 	// Build configuration response
 	config := map[string]interface{}{
-		"mimir_components":  result.MimirComponents,
-		"tenant_namespaces": result.TenantNamespaces,
-		"config_maps":       result.ConfigMaps,
-		"environment":       result.Environment,
-		"last_updated":      result.LastUpdated,
+		"mimir_components":  discoveryResult.MimirComponents,
+		"tenant_namespaces": discoveryResult.TenantNamespaces,
+		"config_maps":       discoveryResult.ConfigMaps,
+		"environment":       discoveryResult.Environment,
+		"last_updated":      discoveryResult.LastUpdated,
 	}
 
 	s.recordMetrics(c, http.StatusOK, start)
@@ -256,39 +329,13 @@ func (s *Server) GetConfig(c *gin.Context) {
 // GetEnvironment returns comprehensive environment detection information
 func (s *Server) GetEnvironment(c *gin.Context) {
 	start := time.Now()
-	ctx := c.Request.Context()
 
-	// Get discovery result with environment information
-	result, err := s.discoveryEngine.DiscoverAll(ctx)
-	if err != nil {
-		s.recordError(c, "discovery_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Get cached environment data
+	environment := s.cacheManager.GetEnvironment()
+	if environment == nil {
+		s.recordError(c, "cache_not_ready", start)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
 		return
-	}
-
-	// Get auto-discovered limits
-	autoDiscovery := limits.NewAutoDiscovery(s.discoveryEngine.GetK8sClient())
-	discoveredLimits, err := autoDiscovery.DiscoverAllLimits(ctx, result.Environment.MimirNamespace)
-	if err != nil {
-		logrus.Warnf("Failed to get auto-discovered limits: %v", err)
-		discoveredLimits = &limits.DiscoveredLimits{
-			GlobalLimits:  make(map[string]interface{}),
-			TenantLimits:  make(map[string]limits.TenantLimit),
-			ConfigSources: []limits.ConfigSource{},
-			LastUpdated:   time.Now(),
-		}
-	}
-
-	// Build comprehensive environment response
-	environment := map[string]interface{}{
-		"cluster_info":         result.Environment,
-		"auto_discovered":      discoveredLimits,
-		"mimir_components":     result.MimirComponents,
-		"detected_tenants":     result.Environment.DetectedTenants,
-		"data_source_status":   result.Environment.DataSource,
-		"is_production":        result.Environment.IsProduction,
-		"total_config_sources": len(discoveredLimits.ConfigSources),
-		"last_updated":         result.LastUpdated,
 	}
 
 	s.recordMetrics(c, http.StatusOK, start)
@@ -1015,25 +1062,272 @@ func (s *Server) ProcessLLMQuery(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// GetLLMCapabilities returns the LLM assistant capabilities
+// GetLLMCapabilities returns the capabilities of the LLM assistant
 func (s *Server) GetLLMCapabilities(c *gin.Context) {
 	start := time.Now()
 
-	capabilities := s.llmAssistant.GetAssistantCapabilities()
+	capabilities := map[string]interface{}{
+		"features": []string{
+			"limit_analysis",
+			"capacity_planning",
+			"drift_detection",
+			"tenant_optimization",
+			"configuration_audit",
+		},
+		"supported_models": []string{"gpt-4", "gpt-3.5-turbo"},
+		"max_tokens":       4000,
+		"temperature":      0.1,
+	}
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, capabilities)
+}
+
+// GetCacheStatus returns the status of the cache manager
+func (s *Server) GetCacheStatus(c *gin.Context) {
+	start := time.Now()
+
+	status := s.cacheManager.GetCacheStatus()
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, status)
+}
+
+// ForceCacheRefresh triggers an immediate cache refresh
+func (s *Server) ForceCacheRefresh(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	if err := s.cacheManager.ForceRefresh(ctx); err != nil {
+		s.recordError(c, "cache_refresh_error", start)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	response := map[string]interface{}{
-		"capabilities": capabilities,
-		"status":       "available",
-		"last_updated": time.Now().UTC(),
-		"example_queries": []string{
-			"Why did rejection rate spike yesterday?",
-			"What's causing the high memory usage?",
-			"Explain the current ingestion trends",
-			"How can I optimize this tenant's performance?",
-			"What alerts should I set up for monitoring?",
-		},
+		"message":   "Cache refresh triggered successfully",
+		"timestamp": time.Now().UTC(),
 	}
 
 	s.recordMetrics(c, http.StatusOK, start)
 	c.JSON(http.StatusOK, response)
+}
+
+// GetDiscoveryDetails returns comprehensive discovery information
+func (s *Server) GetDiscoveryDetails(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] GetDiscoveryDetails called from %s", c.ClientIP())
+	logrus.Infof("📋 [API] GetDiscoveryDetails: Starting comprehensive discovery analysis")
+
+	// Get cached discovery data
+	discoveryResult := s.cacheManager.GetDiscoveryResult()
+	if discoveryResult == nil {
+		logrus.Warnf("❌ [API] GetDiscoveryDetails: Cache not ready - no discovery result available")
+		s.recordError(c, "cache_not_ready", start)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
+		return
+	}
+
+	logrus.Infof("✅ [API] GetDiscoveryDetails: Cache ready, analyzing discovery results")
+
+	// Analyze Mimir components
+	mimirComponents := discoveryResult.MimirComponents
+	logrus.Infof("🔍 [API] GetDiscoveryDetails: Found %d Mimir components", len(mimirComponents))
+
+	componentAnalysis := make(map[string]interface{})
+	for i, component := range mimirComponents {
+		logrus.Infof("📋 [API] GetDiscoveryDetails: Component %d/%d: %s (type: %s, namespace: %s, confidence: %.1f%%)",
+			i+1, len(mimirComponents), component.Name, component.Type, component.Namespace, component.Validation.ConfidenceScore)
+
+		componentAnalysis[component.Name] = map[string]interface{}{
+			"type":              component.Type,
+			"namespace":         component.Namespace,
+			"status":            component.Status,
+			"replicas":          component.Replicas,
+			"image":             component.Image,
+			"version":           component.Version,
+			"confidence_score":  component.Validation.ConfidenceScore,
+			"matched_by":        component.Validation.MatchedBy,
+			"validation_info":   component.Validation.ValidationInfo,
+			"metrics_endpoints": component.MetricsEndpoints,
+			"service_endpoints": component.ServiceEndpoints,
+		}
+	}
+
+	// Analyze tenant namespaces
+	tenantNamespaces := discoveryResult.TenantNamespaces
+	logrus.Infof("🔍 [API] GetDiscoveryDetails: Found %d tenant namespaces", len(tenantNamespaces))
+
+	tenantAnalysis := make(map[string]interface{})
+	for i, tenant := range tenantNamespaces {
+		logrus.Infof("📋 [API] GetDiscoveryDetails: Tenant %d/%d: %s (status: %s, components: %d, confidence: %.1f%%)",
+			i+1, len(tenantNamespaces), tenant.Name, tenant.Status, tenant.ComponentCount, tenant.Validation.ConfidenceScore)
+
+		tenantAnalysis[tenant.Name] = map[string]interface{}{
+			"status":           tenant.Status,
+			"component_count":  tenant.ComponentCount,
+			"confidence_score": tenant.Validation.ConfidenceScore,
+			"matched_by":       tenant.Validation.MatchedBy,
+			"labels":           tenant.Labels,
+			"annotations":      tenant.Annotations,
+			"alloy_config":     tenant.AlloyConfig,
+			"consul_config":    tenant.ConsulConfig,
+			"nginx_config":     tenant.NginxConfig,
+			"mimir_limits":     tenant.MimirLimits,
+		}
+	}
+
+	// Analyze ConfigMaps
+	configMaps := discoveryResult.ConfigMaps
+	logrus.Infof("🔍 [API] GetDiscoveryDetails: Found %d relevant ConfigMaps", len(configMaps))
+
+	configMapAnalysis := make(map[string]interface{})
+	for i, configMap := range configMaps {
+		logrus.Infof("📋 [API] GetDiscoveryDetails: ConfigMap %d/%d: %s (namespace: %s, data keys: %d)",
+			i+1, len(configMaps), configMap.Name, configMap.Namespace, len(configMap.Data))
+
+		configMapAnalysis[configMap.Name] = map[string]interface{}{
+			"namespace": configMap.Namespace,
+			"data_keys": len(configMap.Data),
+			"labels":    configMap.Labels,
+		}
+	}
+
+	// Environment analysis
+	environment := discoveryResult.Environment
+	logrus.Infof("🌍 [API] GetDiscoveryDetails: Environment analysis - Namespace: %s, Total namespaces: %d, Is production: %v",
+		environment.MimirNamespace, environment.TotalNamespaces, environment.IsProduction)
+
+	response := map[string]interface{}{
+		"discovery_summary": map[string]interface{}{
+			"mimir_components_found":    len(mimirComponents),
+			"tenant_namespaces_found":   len(tenantNamespaces),
+			"config_maps_found":         len(configMaps),
+			"last_updated":              discoveryResult.LastUpdated,
+			"auto_discovered_namespace": discoveryResult.AutoDiscoveredNS,
+		},
+		"mimir_components": map[string]interface{}{
+			"count":   len(mimirComponents),
+			"details": componentAnalysis,
+			"analysis": map[string]interface{}{
+				"total_confidence": calculateAverageConfidence(mimirComponents),
+				"component_types":  getComponentTypeDistribution(mimirComponents),
+				"namespaces":       getNamespaceDistribution(mimirComponents),
+			},
+		},
+		"tenant_namespaces": map[string]interface{}{
+			"count":   len(tenantNamespaces),
+			"details": tenantAnalysis,
+			"analysis": map[string]interface{}{
+				"total_confidence":    calculateAverageTenantConfidence(tenantNamespaces),
+				"status_distribution": getTenantStatusDistribution(tenantNamespaces),
+			},
+		},
+		"config_maps": map[string]interface{}{
+			"count":   len(configMaps),
+			"details": configMapAnalysis,
+		},
+		"environment":     environment,
+		"recommendations": generateDiscoveryRecommendations(discoveryResult),
+	}
+
+	logrus.Infof("✅ [API] GetDiscoveryDetails: Returning comprehensive discovery analysis, response time: %v", time.Since(start))
+	logrus.Infof("📊 [API] GetDiscoveryDetails: Response payload size: %d bytes", len(fmt.Sprintf("%+v", response)))
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, response)
+}
+
+// Helper functions for discovery analysis
+func calculateAverageConfidence(components []discovery.MimirComponent) float64 {
+	if len(components) == 0 {
+		return 0.0
+	}
+	total := 0.0
+	for _, component := range components {
+		total += component.Validation.ConfidenceScore
+	}
+	return total / float64(len(components))
+}
+
+func calculateAverageTenantConfidence(tenants []discovery.TenantNamespace) float64 {
+	if len(tenants) == 0 {
+		return 0.0
+	}
+	total := 0.0
+	for _, tenant := range tenants {
+		total += tenant.Validation.ConfidenceScore
+	}
+	return total / float64(len(tenants))
+}
+
+func getComponentTypeDistribution(components []discovery.MimirComponent) map[string]int {
+	distribution := make(map[string]int)
+	for _, component := range components {
+		distribution[component.Type]++
+	}
+	return distribution
+}
+
+func getNamespaceDistribution(components []discovery.MimirComponent) map[string]int {
+	distribution := make(map[string]int)
+	for _, component := range components {
+		distribution[component.Namespace]++
+	}
+	return distribution
+}
+
+func getTenantStatusDistribution(tenants []discovery.TenantNamespace) map[string]int {
+	distribution := make(map[string]int)
+	for _, tenant := range tenants {
+		distribution[tenant.Status]++
+	}
+	return distribution
+}
+
+func generateDiscoveryRecommendations(result *discovery.DiscoveryResult) []string {
+	var recommendations []string
+
+	// Check if Mimir components were found
+	if len(result.MimirComponents) == 0 {
+		recommendations = append(recommendations, "⚠️ No Mimir components found - check if Mimir is deployed in the cluster")
+	} else {
+		// Check component confidence scores
+		lowConfidenceCount := 0
+		for _, component := range result.MimirComponents {
+			if component.Validation.ConfidenceScore < 50 {
+				lowConfidenceCount++
+			}
+		}
+		if lowConfidenceCount > 0 {
+			recommendations = append(recommendations, fmt.Sprintf("⚠️ %d Mimir components have low confidence scores - review discovery patterns", lowConfidenceCount))
+		}
+	}
+
+	// Check if tenant namespaces were found
+	if len(result.TenantNamespaces) == 0 {
+		recommendations = append(recommendations, "ℹ️ No tenant namespaces found - this is normal if no multi-tenant setup exists")
+	} else {
+		recommendations = append(recommendations, fmt.Sprintf("✅ Found %d tenant namespaces", len(result.TenantNamespaces)))
+	}
+
+	// Check environment
+	if result.Environment != nil {
+		if !result.Environment.IsProduction {
+			recommendations = append(recommendations, "ℹ️ Running in non-production environment")
+		}
+		if result.Environment.TotalNamespaces < 5 {
+			recommendations = append(recommendations, "ℹ️ Small cluster detected - limited namespace discovery")
+		}
+	}
+
+	// Check ConfigMaps
+	if len(result.ConfigMaps) == 0 {
+		recommendations = append(recommendations, "⚠️ No relevant ConfigMaps found - check discovery patterns")
+	} else {
+		recommendations = append(recommendations, fmt.Sprintf("✅ Found %d relevant ConfigMaps", len(result.ConfigMaps)))
+	}
+
+	return recommendations
 }

@@ -228,40 +228,18 @@ ENV VCS_REF=${VCS_REF}
 # Copy the pre-built React application
 COPY web-ui/build /usr/share/nginx/html
 
+# Copy nginx configuration
+COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
+
 # Create config directory and config file during build time
 RUN mkdir -p /usr/share/nginx/html/config && \
     echo 'window.CONFIG = {' > /usr/share/nginx/html/config/config.js && \
     echo '  apiBaseUrl: "http://mimir-insights-backend:8080/api",' >> /usr/share/nginx/html/config/config.js && \
     echo '  version: "PRODUCTION-'${PRODUCTION_TAG}'",' >> /usr/share/nginx/html/config/config.js && \
     echo '  buildDate: "'${BUILD_DATE}'",' >> /usr/share/nginx/html/config/config.js && \
-    echo '  vcsRef: "'${VCS_REF}'"' >> /usr/share/nginx/html/config/config.js && \
+    echo '  gitCommit: "'${VCS_REF}'"' >> /usr/share/nginx/html/config/config.js && \
     echo '};' >> /usr/share/nginx/html/config/config.js && \
-    chmod -R 755 /usr/share/nginx/html
-
-# Create a completely minimal nginx configuration that works without any writable directories
-RUN echo 'worker_processes 1;' > /etc/nginx/nginx.conf && \
-    echo 'error_log /dev/stderr warn;' >> /etc/nginx/nginx.conf && \
-    echo '' >> /etc/nginx/nginx.conf && \
-    echo 'events {' >> /etc/nginx/nginx.conf && \
-    echo '    worker_connections 1024;' >> /etc/nginx/nginx.conf && \
-    echo '}' >> /etc/nginx/nginx.conf && \
-    echo '' >> /etc/nginx/nginx.conf && \
-    echo 'http {' >> /etc/nginx/nginx.conf && \
-    echo '    include /etc/nginx/mime.types;' >> /etc/nginx/nginx.conf && \
-    echo '    default_type application/octet-stream;' >> /etc/nginx/nginx.conf && \
-    echo '    access_log /dev/stdout;' >> /etc/nginx/nginx.conf && \
-    echo '    sendfile on;' >> /etc/nginx/nginx.conf && \
-    echo '    keepalive_timeout 65;' >> /etc/nginx/nginx.conf && \
-    echo '    gzip on;' >> /etc/nginx/nginx.conf && \
-    echo '    server {' >> /etc/nginx/nginx.conf && \
-    echo '        listen 80;' >> /etc/nginx/nginx.conf && \
-    echo '        location / {' >> /etc/nginx/nginx.conf && \
-    echo '            root /usr/share/nginx/html;' >> /etc/nginx/nginx.conf && \
-    echo '            index index.html;' >> /etc/nginx/nginx.conf && \
-    echo '            try_files $uri $uri/ /index.html;' >> /etc/nginx/nginx.conf && \
-    echo '        }' >> /etc/nginx/nginx.conf && \
-    echo '    }' >> /etc/nginx/nginx.conf && \
-    echo '}' >> /etc/nginx/nginx.conf
+    chmod 755 /usr/share/nginx/html/config
 
 # Create startup script
 RUN echo '#!/bin/sh' > /start.sh && \
@@ -270,7 +248,7 @@ RUN echo '#!/bin/sh' > /start.sh && \
     echo 'echo "🚀 Starting MimirInsights Frontend..."' >> /start.sh && \
     echo 'echo "🛠 Version: PRODUCTION-'${PRODUCTION_TAG}'"' >> /start.sh && \
     echo 'echo "🏗 Architecture: $(uname -m)"' >> /start.sh && \
-    echo 'echo "✅ Nginx configuration: optimized for read-only filesystem"' >> /start.sh && \
+    echo 'echo "✅ Using web-ui/nginx.conf with API proxy support"' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '# Test nginx configuration' >> /start.sh && \
     echo 'nginx -t' >> /start.sh && \

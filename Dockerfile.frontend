@@ -56,6 +56,11 @@ COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
 RUN mkdir -p /usr/share/nginx/html/config && \
     chmod 755 /usr/share/nginx/html/config
 
+# Configure nginx to log to stdout/stderr
+RUN echo 'daemon off;' >> /etc/nginx/nginx.conf && \
+    echo 'error_log /dev/stderr warn;' >> /etc/nginx/nginx.conf && \
+    echo 'access_log /dev/stdout combined;' >> /etc/nginx/nginx.conf
+
 # Create optimized entrypoint script
 RUN echo '#!/bin/sh' > /start.sh && \
     echo 'set -e' >> /start.sh && \
@@ -65,27 +70,14 @@ RUN echo '#!/bin/sh' > /start.sh && \
     echo '# Ensure config directory exists' >> /start.sh && \
     echo 'mkdir -p /usr/share/nginx/html/config' >> /start.sh && \
     echo '' >> /start.sh && \
-    echo '# Create runtime configuration' >> /start.sh && \
-    echo 'cat > /usr/share/nginx/html/config/config.js << EOFCONFIG' >> /start.sh && \
-    echo 'window.CONFIG = {' >> /start.sh && \
-    echo '  apiBaseUrl: "http://mimir-insights-backend:8080",' >> /start.sh && \
-    echo '  environment: "production",' >> /start.sh && \
-    echo '  version: "1.0.0",' >> /start.sh && \
-    echo '  features: {' >> /start.sh && \
-    echo '    autoRefresh: true,' >> /start.sh && \
-    echo '    mockData: false' >> /start.sh && \
-    echo '  }' >> /start.sh && \
-    echo '};' >> /start.sh && \
-    echo 'EOFCONFIG' >> /start.sh && \
-    echo '' >> /start.sh && \
-    echo 'echo "✅ Configuration created"' >> /start.sh && \
+    echo 'echo "✅ Config directory ready"' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '# Test nginx configuration' >> /start.sh && \
     echo 'nginx -t' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '# Start nginx' >> /start.sh && \
     echo 'echo "🌐 Starting nginx..."' >> /start.sh && \
-    echo 'exec nginx -g "daemon off;"' >> /start.sh && \
+    echo 'exec nginx' >> /start.sh && \
     chmod +x /start.sh
 
 # Health check

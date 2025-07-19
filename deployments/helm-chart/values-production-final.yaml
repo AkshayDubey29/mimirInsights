@@ -560,7 +560,7 @@ backend:
   enabled: true
   image:
     repository: ghcr.io/akshaydubey29/mimir-insights-backend
-    tag: "v1.0.0-20250718-110355"
+    tag: "v1.0.0-20250719-061613"
     pullPolicy: Always
   replicaCount: 2
   resources:
@@ -673,7 +673,7 @@ frontend:
   enabled: true
   image:
     repository: ghcr.io/akshaydubey29/mimir-insights-frontend
-    tag: "v1.0.0-20250718-110355"
+    tag: "v1.0.0-20250719-061613"
     pullPolicy: Always
   replicaCount: 2
   resources:
@@ -736,7 +736,8 @@ ingress:
   annotations:
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:138978013424:certificate/7b1c00f5-19ee-4e6c-9ca5-b30679eac---
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
-    alb.ingress.kubernetes.io/healthcheck-port: "80"
+    alb.ingress.kubernetes.io/backend-protocol-version: HTTP1
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=false,deregistration_delay.timeout_seconds=30,stickiness.type=lb_cookie,stickiness.lb_cookie.duration_seconds=86400
     alb.ingress.kubernetes.io/inbound-cidrs: 10.0.0.0/8
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/scheme: internal
@@ -746,6 +747,9 @@ ingress:
     alb.ingress.kubernetes.io/tags: role=couwatch_mimir
     alb.ingress.kubernetes.io/target-type: ip
     kubernetes.io/ingress.class: alb
+    # Remove nginx rewrite-target to prevent double /api prefix
+    nginx.ingress.kubernetes.io/rewrite-target: ""
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
   hosts:
     - host: mimir-insights.yourdomain.com
       paths:

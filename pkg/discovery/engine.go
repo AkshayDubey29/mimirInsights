@@ -353,7 +353,8 @@ func (e *Engine) evaluateNamespaceForMimir(ctx context.Context, ns *corev1.Names
 
 // DiscoverAll performs complete discovery of Mimir and tenant components
 func (e *Engine) DiscoverAll(ctx context.Context) (*DiscoveryResult, error) {
-	logrus.Info("Starting intelligent auto-discovery of Mimir components and tenant namespaces")
+	logrus.Info("🚀 Starting intelligent auto-discovery of Mimir components and tenant namespaces")
+	logrus.Infof("📋 [DISCOVERY] Configuration - Namespace: %s, Auto-detect: %v", e.config.Mimir.Namespace, e.config.Mimir.Discovery.AutoDetect)
 
 	result := &DiscoveryResult{
 		LastUpdated: time.Now(),
@@ -362,44 +363,76 @@ func (e *Engine) DiscoverAll(ctx context.Context) (*DiscoveryResult, error) {
 	// Auto-discover Mimir namespace if not configured
 	mimirNamespace := e.config.Mimir.Namespace
 	if mimirNamespace == "" || mimirNamespace == "auto" {
+		logrus.Infof("🔍 [DISCOVERY] Auto-discovering Mimir namespace...")
 		autoNS, err := e.AutoDiscoverMimirNamespace(ctx)
 		if err != nil {
-			logrus.Warnf("Failed to auto-discover Mimir namespace: %v", err)
+			logrus.Warnf("⚠️ [DISCOVERY] Failed to auto-discover Mimir namespace: %v", err)
 			mimirNamespace = "mimir" // fallback
+			logrus.Infof("📋 [DISCOVERY] Using fallback namespace: %s", mimirNamespace)
 		} else {
 			mimirNamespace = autoNS
 			result.AutoDiscoveredNS = autoNS
+			logrus.Infof("✅ [DISCOVERY] Auto-discovered Mimir namespace: %s", mimirNamespace)
 		}
 	}
 
 	// Update config with discovered namespace
 	e.config.Mimir.Namespace = mimirNamespace
+	logrus.Infof("📋 [DISCOVERY] Using namespace for discovery: %s", mimirNamespace)
 
 	// Discover Mimir components with enhanced validation
+	logrus.Infof("🔍 [DISCOVERY] Starting Mimir component discovery in namespace: %s", mimirNamespace)
 	mimirComponents, err := e.discoverMimirComponentsAdvanced(ctx, mimirNamespace)
 	if err != nil {
+		logrus.Errorf("❌ [DISCOVERY] Failed to discover Mimir components: %v", err)
 		return nil, fmt.Errorf("failed to discover Mimir components: %w", err)
 	}
 	result.MimirComponents = mimirComponents
+	logrus.Infof("✅ [DISCOVERY] Mimir component discovery completed: %d components found", len(mimirComponents))
+
+	// Log details about discovered components
+	for i, component := range mimirComponents {
+		logrus.Infof("📋 [DISCOVERY] Component %d/%d: %s (type: %s, confidence: %.1f%%, status: %s)",
+			i+1, len(mimirComponents), component.Name, component.Type, component.Validation.ConfidenceScore, component.Status)
+	}
 
 	// Discover tenant namespaces
+	logrus.Infof("🔍 [DISCOVERY] Starting tenant namespace discovery...")
 	tenantNamespaces, err := e.discoverTenantNamespaces(ctx)
 	if err != nil {
+		logrus.Errorf("❌ [DISCOVERY] Failed to discover tenant namespaces: %v", err)
 		return nil, fmt.Errorf("failed to discover tenant namespaces: %w", err)
 	}
 	result.TenantNamespaces = tenantNamespaces
+	logrus.Infof("✅ [DISCOVERY] Tenant namespace discovery completed: %d tenants found", len(tenantNamespaces))
+
+	// Log details about discovered tenants
+	for i, tenant := range tenantNamespaces {
+		logrus.Infof("📋 [DISCOVERY] Tenant %d/%d: %s (status: %s, components: %d, confidence: %.1f%%)",
+			i+1, len(tenantNamespaces), tenant.Name, tenant.Status, tenant.ComponentCount, tenant.Validation.ConfidenceScore)
+	}
 
 	// Discover ConfigMaps
+	logrus.Infof("🔍 [DISCOVERY] Starting ConfigMap discovery...")
 	configMaps, err := e.discoverConfigMaps(ctx)
 	if err != nil {
+		logrus.Errorf("❌ [DISCOVERY] Failed to discover ConfigMaps: %v", err)
 		return nil, fmt.Errorf("failed to discover ConfigMaps: %w", err)
 	}
 	result.ConfigMaps = configMaps
+	logrus.Infof("✅ [DISCOVERY] ConfigMap discovery completed: %d ConfigMaps found", len(configMaps))
+
+	// Log details about discovered ConfigMaps
+	for i, configMap := range configMaps {
+		logrus.Infof("📋 [DISCOVERY] ConfigMap %d/%d: %s (namespace: %s, data keys: %d)",
+			i+1, len(configMaps), configMap.Name, configMap.Namespace, len(configMap.Data))
+	}
 
 	// Detect environment information
+	logrus.Infof("🔍 [DISCOVERY] Starting environment detection...")
 	environment, err := e.environmentDetector.DetectEnvironment(ctx, mimirNamespace)
 	if err != nil {
-		logrus.Warnf("Failed to detect environment: %v", err)
+		logrus.Warnf("⚠️ [DISCOVERY] Failed to detect environment: %v", err)
 		// Don't fail the entire discovery if environment detection fails
 		environment = &EnvironmentInfo{
 			DataSource:      "unknown",
@@ -407,11 +440,44 @@ func (e *Engine) DiscoverAll(ctx context.Context) (*DiscoveryResult, error) {
 			DetectedTenants: []DetectedTenant{},
 			LastUpdated:     time.Now(),
 		}
+		logrus.Infof("📋 [DISCOVERY] Using fallback environment configuration")
 	}
 	result.Environment = environment
+	logrus.Infof("✅ [DISCOVERY] Environment detection completed - Production: %v, Data source: %s",
+		environment.IsProduction, environment.DataSource)
 
-	logrus.Infof("Enhanced discovery completed: %d Mimir components, %d tenant namespaces, %d ConfigMaps in namespace %s",
-		len(mimirComponents), len(tenantNamespaces), len(configMaps), mimirNamespace)
+	// Generate discovery summary and recommendations
+	logrus.Infof("📊 [DISCOVERY] Discovery Summary:")
+	logrus.Infof("   - Mimir Components: %d", len(mimirComponents))
+	logrus.Infof("   - Tenant Namespaces: %d", len(tenantNamespaces))
+	logrus.Infof("   - ConfigMaps: %d", len(configMaps))
+	logrus.Infof("   - Environment: %s (Production: %v)", environment.DataSource, environment.IsProduction)
+	logrus.Infof("   - Namespace: %s", mimirNamespace)
+
+	// Provide recommendations based on discovery results
+	if len(mimirComponents) == 0 {
+		logrus.Warnf("⚠️ [DISCOVERY] No Mimir components found - this may indicate:")
+		logrus.Warnf("   - Mimir is not deployed in the cluster")
+		logrus.Warnf("   - Mimir is deployed in a different namespace")
+		logrus.Warnf("   - Discovery patterns need adjustment")
+	} else {
+		// Check confidence scores
+		lowConfidenceCount := 0
+		for _, component := range mimirComponents {
+			if component.Validation.ConfidenceScore < 50 {
+				lowConfidenceCount++
+			}
+		}
+		if lowConfidenceCount > 0 {
+			logrus.Warnf("⚠️ [DISCOVERY] %d components have low confidence scores - review discovery patterns", lowConfidenceCount)
+		}
+	}
+
+	if len(tenantNamespaces) == 0 {
+		logrus.Infof("ℹ️ [DISCOVERY] No tenant namespaces found - this is normal if no multi-tenant setup exists")
+	}
+
+	logrus.Infof("✅ [DISCOVERY] Enhanced discovery completed successfully in %v", time.Since(result.LastUpdated))
 
 	return result, nil
 }
@@ -1188,18 +1254,27 @@ func getDaemonSetStatus(daemonSet *appsv1.DaemonSet) string {
 
 // isMimirComponentAdvanced checks if a Kubernetes resource (Deployment/StatefulSet) is a Mimir component
 func (e *Engine) isMimirComponentAdvanced(name string, labels map[string]string, annotations map[string]string) bool {
+	// Exclude our own components to avoid false positives
+	if strings.Contains(strings.ToLower(name), "mimir-insights") ||
+		strings.Contains(strings.ToLower(name), "mimirinsights") {
+		logrus.Debugf("🔍 [DISCOVERY] Excluding own component: %s", name)
+		return false
+	}
+
 	// Check if the name matches any compiled component pattern
-	for _, patterns := range e.compiledPatterns.ComponentPatterns {
+	for componentType, patterns := range e.compiledPatterns.ComponentPatterns {
 		for _, pattern := range patterns {
 			if pattern.MatchString(name) {
+				logrus.Debugf("🔍 [DISCOVERY] Component %s matched pattern for %s", name, componentType)
 				return true
 			}
 		}
 	}
 
-	// Check if the name contains Mimir-specific keywords
+	// Check if the name contains Mimir-specific keywords (but not our own components)
 	if strings.Contains(strings.ToLower(name), "mimir") ||
 		strings.Contains(strings.ToLower(name), "cortex") {
+		logrus.Debugf("🔍 [DISCOVERY] Component %s matched Mimir/Cortex keyword", name)
 		return true
 	}
 
@@ -1209,6 +1284,7 @@ func (e *Engine) isMimirComponentAdvanced(name string, labels map[string]string,
 			strings.Contains(strings.ToLower(value), "mimir") ||
 			strings.Contains(strings.ToLower(key), "cortex") ||
 			strings.Contains(strings.ToLower(value), "cortex") {
+			logrus.Debugf("🔍 [DISCOVERY] Component %s matched Mimir/Cortex label: %s=%s", name, key, value)
 			return true
 		}
 	}
@@ -1217,10 +1293,12 @@ func (e *Engine) isMimirComponentAdvanced(name string, labels map[string]string,
 			strings.Contains(strings.ToLower(value), "mimir") ||
 			strings.Contains(strings.ToLower(key), "cortex") ||
 			strings.Contains(strings.ToLower(value), "cortex") {
+			logrus.Debugf("🔍 [DISCOVERY] Component %s matched Mimir/Cortex annotation: %s=%s", name, key, value)
 			return true
 		}
 	}
 
+	logrus.Debugf("🔍 [DISCOVERY] Component %s did not match any Mimir patterns", name)
 	return false
 }
 
@@ -1256,9 +1334,17 @@ func (e *Engine) isMimirServiceAdvanced(name string, labels map[string]string, a
 
 // isMimirConfigMapAdvanced checks if a Kubernetes ConfigMap is a Mimir ConfigMap
 func (e *Engine) isMimirConfigMapAdvanced(name string, labels map[string]string, data map[string]string) bool {
+	// Exclude our own ConfigMaps to avoid false positives
+	if strings.Contains(strings.ToLower(name), "mimir-insights") ||
+		strings.Contains(strings.ToLower(name), "mimirinsights") {
+		logrus.Debugf("🔍 [DISCOVERY] Excluding own ConfigMap: %s", name)
+		return false
+	}
+
 	// Check if the name matches any compiled ConfigMap pattern
 	for _, pattern := range e.compiledPatterns.ConfigMapPatterns {
 		if pattern.MatchString(name) {
+			logrus.Debugf("🔍 [DISCOVERY] ConfigMap %s matched pattern", name)
 			return true
 		}
 	}
@@ -1266,6 +1352,7 @@ func (e *Engine) isMimirConfigMapAdvanced(name string, labels map[string]string,
 	// Check if the name contains Mimir-specific keywords
 	if strings.Contains(strings.ToLower(name), "mimir") ||
 		strings.Contains(strings.ToLower(name), "cortex") {
+		logrus.Debugf("🔍 [DISCOVERY] ConfigMap %s matched Mimir/Cortex keyword", name)
 		return true
 	}
 
@@ -1275,6 +1362,7 @@ func (e *Engine) isMimirConfigMapAdvanced(name string, labels map[string]string,
 			strings.Contains(strings.ToLower(value), "mimir") ||
 			strings.Contains(strings.ToLower(key), "cortex") ||
 			strings.Contains(strings.ToLower(value), "cortex") {
+			logrus.Debugf("🔍 [DISCOVERY] ConfigMap %s matched Mimir/Cortex label: %s=%s", name, key, value)
 			return true
 		}
 	}
@@ -1283,10 +1371,12 @@ func (e *Engine) isMimirConfigMapAdvanced(name string, labels map[string]string,
 			strings.Contains(strings.ToLower(value), "mimir") ||
 			strings.Contains(strings.ToLower(key), "cortex") ||
 			strings.Contains(strings.ToLower(value), "cortex") {
+			logrus.Debugf("🔍 [DISCOVERY] ConfigMap %s matched Mimir/Cortex data: %s", name, key)
 			return true
 		}
 	}
 
+	logrus.Debugf("🔍 [DISCOVERY] ConfigMap %s did not match any Mimir patterns", name)
 	return false
 }
 

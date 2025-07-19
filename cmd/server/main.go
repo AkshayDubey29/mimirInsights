@@ -60,6 +60,7 @@ func main() {
 		apiGroup.GET("/limits", server.GetLimits)
 		apiGroup.GET("/config", server.GetConfig)
 		apiGroup.GET("/environment", server.GetEnvironment)
+		apiGroup.GET("/discovery", server.GetDiscoveryDetails) // Added new discovery details endpoint
 		apiGroup.GET("/metrics", server.GetMetrics)
 		apiGroup.GET("/metrics/discovery", server.GetAutoDiscoveredMetrics)
 		apiGroup.GET("/audit", server.GetAuditLogs)
@@ -75,6 +76,8 @@ func main() {
 		apiGroup.GET("/capacity/trends", server.GetCapacityTrends)
 		apiGroup.POST("/llm/query", server.ProcessLLMQuery)
 		apiGroup.GET("/llm/capabilities", server.GetLLMCapabilities)
+		apiGroup.GET("/cache/status", server.GetCacheStatus)
+		apiGroup.POST("/cache/refresh", server.ForceCacheRefresh)
 	}
 
 	// Serve static files for UI
