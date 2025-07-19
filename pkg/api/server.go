@@ -1138,6 +1138,31 @@ func (s *Server) GetComprehensiveTenantDiscovery(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// GetComprehensiveMimirDiscovery returns comprehensive Mimir discovery using multiple strategies
+func (s *Server) GetComprehensiveMimirDiscovery(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	logrus.Infof("🔍 [API] GetComprehensiveMimirDiscovery called from %s", c.ClientIP())
+	logrus.Infof("📋 [API] GetComprehensiveMimirDiscovery: Starting multi-strategy Mimir discovery")
+
+	// Perform comprehensive Mimir discovery
+	result, err := s.discoveryEngine.DiscoverMimirComprehensive(ctx)
+	if err != nil {
+		logrus.Errorf("❌ [API] GetComprehensiveMimirDiscovery: Failed to discover Mimir components: %v", err)
+		s.recordError(c, "mimir_discovery_error", start)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logrus.Infof("✅ [API] GetComprehensiveMimirDiscovery: Mimir discovery completed successfully")
+	logrus.Infof("📊 [API] GetComprehensiveMimirDiscovery: Found %d Mimir components using %d strategies",
+		len(result.ConsolidatedComponents), len(result.Strategies))
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, result)
+}
+
 // GetDiscoveryDetails returns comprehensive discovery information
 func (s *Server) GetDiscoveryDetails(c *gin.Context) {
 	start := time.Now()

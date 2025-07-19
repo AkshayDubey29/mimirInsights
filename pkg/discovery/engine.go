@@ -24,6 +24,8 @@ type Engine struct {
 	compiledPatterns *CompiledPatterns
 	// Multi-strategy tenant discovery
 	multiStrategyDiscovery *MultiStrategyTenantDiscovery
+	// Multi-strategy Mimir discovery
+	multiStrategyMimirDiscovery *MultiStrategyMimirDiscovery
 }
 
 // CompiledPatterns holds pre-compiled regex patterns for efficient matching
@@ -161,6 +163,9 @@ func NewEngine() *Engine {
 
 	// Initialize multi-strategy tenant discovery
 	engine.multiStrategyDiscovery = NewMultiStrategyTenantDiscovery(engine)
+
+	// Initialize multi-strategy Mimir discovery
+	engine.multiStrategyMimirDiscovery = NewMultiStrategyMimirDiscovery(engine)
 
 	return engine
 }
@@ -1729,4 +1734,15 @@ func (e *Engine) DiscoverTenantsComprehensive(ctx context.Context) (*Comprehensi
 	}
 
 	return e.multiStrategyDiscovery.DiscoverTenantsComprehensive(ctx)
+}
+
+// DiscoverMimirComprehensive performs comprehensive Mimir discovery using multiple strategies
+func (e *Engine) DiscoverMimirComprehensive(ctx context.Context) (*ComprehensiveMimirDiscoveryResult, error) {
+	logrus.Info("🔍 Starting comprehensive Mimir discovery using multiple strategies")
+
+	if e.multiStrategyMimirDiscovery == nil {
+		return nil, fmt.Errorf("multi-strategy Mimir discovery not initialized")
+	}
+
+	return e.multiStrategyMimirDiscovery.DiscoverMimirComprehensive(ctx)
 }
