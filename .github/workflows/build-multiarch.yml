@@ -1,4 +1,5 @@
 name: Build and Push Multi-Architecture Docker Images
+# Trigger: Manual deployment workflow - builds and pushes containers only
 
 on:
   push:
