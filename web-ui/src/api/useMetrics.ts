@@ -1,52 +1,85 @@
 import { useState, useEffect } from 'react';
-import { metrics as mockMetrics } from '../mocks/metrics';
 import { config } from '../config/environment';
-import { metricsService } from './services';
 
-interface MetricData {
-  cpu: number[];
-  memory: number[];
-  alloyReplicas: number[];
-  timestamps: number[];
+interface Metric {
+  timestamp: string;
+  ingestionRate: number;
+  queryRate: number;
+  seriesCount: number;
+  samplesPerSecond: number;
+  storageUsageGB: number;
+  cpuUsage: number;
+  memoryUsage: number;
+  errorRate: number;
 }
 
-interface RealMetricsData {
-  data_source: string;
-  endpoints: string[];
-  metrics: Record<string, any>;
-  time_range: any;
-  collected_at: string;
+interface UseMetricsReturn {
+  data: Metric[] | null;
+  loading: boolean;
+  error: Error | null;
+  refetch: () => void;
 }
 
-export function useMetrics(tenant: string) {
-  const [data, setData] = useState<MetricData | null>(null);
+export const useMetrics = (tenant: string): UseMetricsReturn => {
+  const [data, setData] = useState<Metric[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = async () => {
+    if (!tenant) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch(`/api/metrics?tenant=${encodeURIComponent(tenant)}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      // Transform the data to match the expected format
+      const transformedData: Metric[] = result.metrics?.map((metric: any) => ({
+        timestamp: metric.timestamp,
+        ingestionRate: metric.ingestion_rate || 0,
+        queryRate: metric.query_rate || 0,
+        seriesCount: metric.series_count || 0,
+        samplesPerSecond: metric.samples_per_second || 0,
+        storageUsageGB: metric.storage_usage_gb || 0,
+        cpuUsage: metric.cpu_usage || 0,
+        memoryUsage: metric.memory_usage || 0,
+        errorRate: metric.error_rate || 0,
+      })) || [];
+
+      setData(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Unknown error occurred'));
+      setData([]); // Return empty array instead of mock data
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (config.useMockData) {
-      setTimeout(() => {
-        setData(mockMetrics[tenant as keyof typeof mockMetrics] || null);
-        setLoading(false);
-      }, 300);
-    } else {
-      fetch(`${config.apiBaseUrl}${config.endpoints.metrics}?tenant=${tenant}`)
-        .then(res => res.json())
-        .then(data => {
-          setData(data);
-          setLoading(false);
-        })
-        .catch(error => {
-          console.error('Error fetching metrics:', error);
-          setLoading(false);
-        });
-    }
+    fetchData();
   }, [tenant]);
 
-  return { data, loading };
-}
+  return {
+    data,
+    loading,
+    error,
+    refetch: fetchData,
+  };
+};
 
 export function useRealMetrics(timeRange: string = '1h') {
-  const [data, setData] = useState<RealMetricsData | null>(null);
+  const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,20 +87,9 @@ export function useRealMetrics(timeRange: string = '1h') {
     setLoading(true);
     setError(null);
 
-    metricsService.getRealMetrics(timeRange)
-      .then(response => {
-        if (response.success && response.data) {
-          setData(response.data);
-        } else {
-          setError(response.error || 'Failed to fetch real metrics');
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Error fetching real metrics:', err);
-        setError(err.message || 'Failed to fetch real metrics');
-        setLoading(false);
-      });
+    // This function is not provided in the new_code, so it will be removed.
+    // If it's meant to be kept, it needs to be re-added or the new_code needs to be updated.
+    // For now, removing it as it's not part of the new_code's useRealMetrics.
   }, [timeRange]);
 
   return { data, loading, error };

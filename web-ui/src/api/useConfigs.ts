@@ -1,48 +1,71 @@
 import { useState, useEffect } from 'react';
-import { configs as mockConfigs } from '../mocks/configs';
 import { config } from '../config/environment';
 
-interface ConfigData {
-  tenant: string;
-  configDrift: boolean;
+interface Config {
+  id: string;
+  name: string;
+  namespace: string;
+  type: string;
+  status: string;
+  lastModified: string;
   auditStatus: string;
-  details: string;
+  description: string;
 }
 
-export function useConfigs() {
-  const [data, setData] = useState<ConfigData[]>([]);
+interface UseConfigsReturn {
+  data: Config[] | null;
+  loading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+export const useConfigs = (): UseConfigsReturn => {
+  const [data, setData] = useState<Config[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/config');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      // Transform the data to match the expected format
+      const transformedData: Config[] = result.configs?.map((config: any) => ({
+        id: config.name,
+        name: config.name,
+        namespace: config.namespace,
+        type: config.kind,
+        status: config.status || 'Active',
+        lastModified: config.lastModified || new Date().toISOString(),
+        auditStatus: 'Active',
+        description: config.description || `Configuration for ${config.name}`,
+      })) || [];
+
+      setData(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Unknown error occurred'));
+      setData([]); // Return empty array instead of mock data
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (config.useMockData) {
-      setTimeout(() => {
-        setData(mockConfigs);
-        setLoading(false);
-      }, 300);
-    } else {
-      fetch(`${config.apiBaseUrl}${config.endpoints.configs}`)
-        .then(res => res.json())
-        .then(response => {
-          // Transform backend response to expected format
-          const tenants = response?.environment?.detected_tenants || [];
-          const configData: ConfigData[] = tenants.map((tenant: any) => ({
-            tenant: tenant.name,
-            configDrift: false, // TODO: Implement drift detection
-            auditStatus: tenant.has_real_data ? 'Active' : 'Mock Data',
-            details: tenant.has_real_data 
-              ? `Active tenant with ${tenant.metrics_volume} metrics`
-              : 'Mock tenant for development'
-          }));
-          setData(configData);
-        })
-        .catch(error => {
-          console.error('Error fetching configs:', error);
-          // Fallback to mock data on error
-          setData(mockConfigs);
-        })
-        .finally(() => setLoading(false));
-    }
+    fetchData();
   }, []);
 
-  return { data, loading };
-} 
+  return {
+    data,
+    loading,
+    error,
+    refetch: fetchData,
+  };
+}; 

@@ -114,31 +114,38 @@ type ResponseMetadata struct {
 }
 
 // NewAssistant creates a new LLM assistant
-func NewAssistant(config *config.Config, metricsClient *metrics.Client) *Assistant {
+func NewAssistant() (*Assistant, error) {
+	cfg := config.Get()
 	var llmClient LLMClient
+	var err error
 
-	// Initialize LLM client based on configuration
-	if config.LLM.Enabled {
-		switch config.LLM.Provider {
-		case "openai":
-			llmClient = NewOpenAIClient(config.LLM)
-		case "anthropic":
-			llmClient = NewAnthropicClient(config.LLM)
-		case "ollama":
-			llmClient = NewOllamaClient(config.LLM)
-		default:
-			logrus.Warnf("Unknown LLM provider: %s, using mock client", config.LLM.Provider)
-			llmClient = NewMockLLMClient()
-		}
-	} else {
-		llmClient = NewMockLLMClient()
+	switch cfg.LLM.Provider {
+	case "openai":
+		llmClient, err = NewOpenAIClient()
+	case "anthropic":
+		llmClient, err = NewAnthropicClient()
+	case "ollama":
+		llmClient, err = NewOllamaClient()
+	default:
+		logrus.Warnf("Unknown LLM provider: %s, no LLM integration available", cfg.LLM.Provider)
+		return &Assistant{
+			client:  nil,
+			enabled: false,
+		}, nil
+	}
+
+	if err != nil {
+		logrus.Warnf("Failed to initialize LLM client: %v", err)
+		return &Assistant{
+			client:  nil,
+			enabled: false,
+		}, nil
 	}
 
 	return &Assistant{
-		config:        config,
-		metricsClient: metricsClient,
-		llmClient:     llmClient,
-	}
+		client:  llmClient,
+		enabled: llmClient.IsEnabled(),
+	}, nil
 }
 
 // ProcessQuery processes a natural language query about metrics
