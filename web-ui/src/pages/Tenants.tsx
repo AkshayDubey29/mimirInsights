@@ -215,13 +215,13 @@ const Tenants: React.FC = () => {
 
   // Statistics
   const stats = useMemo(() => {
-    if (!tenants) return { total: 0, healthy: 0, warning: 0, critical: 0, inactive: 0 };
+    if (!tenants) return { total: 0, healthy: 0, warning: 0, critical: 0, inactive: 0, active: 0 };
     
     return tenants.reduce((acc, tenant) => {
       acc.total++;
       acc[tenant.status]++;
       return acc;
-    }, { total: 0, healthy: 0, warning: 0, critical: 0, inactive: 0 });
+    }, { total: 0, healthy: 0, warning: 0, critical: 0, inactive: 0, active: 0 });
   }, [tenants]);
 
   // Data grid columns
