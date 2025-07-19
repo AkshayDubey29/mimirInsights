@@ -42,7 +42,7 @@ interface TenantAlert {
   resolved: boolean;
 }
 
-interface EnhancedTenant extends Tenant {
+export interface EnhancedTenant extends Tenant {
   metrics: TenantMetrics[];
   configuration: TenantConfiguration;
   alerts: TenantAlert[];

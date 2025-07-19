@@ -85,7 +85,7 @@ import {
   BugReport as BugReportIcon,
   Sort as SortIcon,
 } from '@mui/icons-material';
-import { useEnhancedTenants } from '../api/useTenants';
+import { useEnhancedTenants, EnhancedTenant } from '../api/useTenants';
 import { config } from '../config/environment';
 import { DataGridWithPagination, Column } from '../components/DataGridWithPagination';
 
