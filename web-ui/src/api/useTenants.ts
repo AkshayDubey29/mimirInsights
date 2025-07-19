@@ -88,7 +88,18 @@ export function useTenants(enhanced: boolean = false) {
       const endpoint = config.endpoints.tenants;
       fetch(`${config.apiBaseUrl}${endpoint}`)
         .then(res => res.json())
-        .then(setData)
+        .then(response => {
+          // Handle the API response structure - extract tenants array
+          if (response.tenants && Array.isArray(response.tenants)) {
+            setData(response.tenants);
+          } else if (Array.isArray(response)) {
+            // Fallback for direct array response
+            setData(response);
+          } else {
+            console.warn('Unexpected API response structure:', response);
+            setData([]);
+          }
+        })
         .catch(error => {
           console.error('Failed to fetch tenant data:', error);
           // Fallback to mock data on error
