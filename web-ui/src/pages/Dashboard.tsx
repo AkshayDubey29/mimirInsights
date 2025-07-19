@@ -52,19 +52,9 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('/api/metrics/dashboard');
-      if (!response.ok) {
-        throw new (Error as any)(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setMetrics(data);
-    } catch (err: unknown) {
-      const errorMessage = (err as Error)?.message || 'Failed to fetch dashboard metrics';
-      setError(errorMessage);
-      // Calculate basic metrics from tenants data if available
+      // Use tenants data directly since the dashboard endpoint is not available yet
       if (tenants && tenants.length > 0) {
-        const healthyCount = tenants.filter(t => t.status === 'healthy').length;
+        const healthyCount = tenants.filter(t => t.status === 'healthy' || t.status === 'active').length;
         const warningCount = tenants.filter(t => t.status === 'warning').length;
         const criticalCount = tenants.filter(t => t.status === 'critical').length;
         
@@ -79,7 +69,23 @@ const Dashboard: React.FC = () => {
           averageErrorRate: 0, // Will be calculated from real metrics
           systemHealth: criticalCount > 0 ? 'critical' : warningCount > 0 ? 'warning' : 'healthy',
         });
+      } else {
+        // Set default metrics if no tenants data
+        setMetrics({
+          totalTenants: 0,
+          healthyTenants: 0,
+          warningTenants: 0,
+          criticalTenants: 0,
+          totalSeries: 0,
+          totalIngestionRate: 0,
+          totalQueryRate: 0,
+          averageErrorRate: 0,
+          systemHealth: 'healthy',
+        });
       }
+    } catch (err: unknown) {
+      const errorMessage = (err as Error)?.message || 'Failed to fetch dashboard metrics';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
