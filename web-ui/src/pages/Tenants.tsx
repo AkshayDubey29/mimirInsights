@@ -395,11 +395,11 @@ const Tenants: React.FC = () => {
     setSearchTerm(event.target.value);
   };
 
-  const handleStatusFilter = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStatusFilter = (event: any) => {
     setStatusFilter(event.target.value);
   };
 
-  const handleNamespaceFilter = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNamespaceFilter = (event: any) => {
     setNamespaceFilter(event.target.value);
   };
 
