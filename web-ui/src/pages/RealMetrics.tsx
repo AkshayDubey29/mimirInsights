@@ -145,7 +145,7 @@ export default function RealMetrics() {
         />
         <CardContent>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {data.endpoints.map((endpoint, index) => (
+            {data.endpoints.map((endpoint: string, index: number) => (
               <Chip
                 key={index}
                 label={endpoint}
