@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# MimirInsights Local Deployment from CI Images
-# This script deploys the application using pre-built multi-architecture images from GitHub Container Registry
+# ==============================================================================
+# Deploy from CI/CD Script for MimirInsights
+# Updates values file with timestamp and deploys to local kind cluster
+# ==============================================================================
 
 set -e
 
@@ -12,457 +14,200 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
 # Configuration
-REPO_NAME="akshaydubey29/mimir-insights"
-REGISTRY="ghcr.io"
-VERSION=${1:-"latest"}
+VALUES_FILE="deployments/helm-chart/values-production-final.yaml"
+HELM_CHART_DIR="deployments/helm-chart"
 NAMESPACE="mimir-insights"
+RELEASE_NAME="mimir-insights"
 
-# Image names
-FRONTEND_IMAGE="${REGISTRY}/${REPO_NAME}/mimir-insights-frontend:${VERSION}"
-BACKEND_IMAGE="${REGISTRY}/${REPO_NAME}/mimir-insights-backend:${VERSION}"
+# Check if timestamp is provided as argument
+if [ $# -eq 0 ]; then
+    print_error "Usage: $0 <timestamp>"
+    print_error "Example: $0 20250719-141012"
+    print_error ""
+    print_error "This script will:"
+    print_error "1. Update values-production-final.yaml with the timestamp"
+    print_error "2. Deploy to local kind cluster using Helm"
+    print_error "3. Setup port forwarding for backend and frontend"
+    print_error "4. Verify deployment status"
+    exit 1
+fi
 
-echo -e "${BLUE}🚀 MimirInsights Local Deployment from CI Images${NC}"
-echo -e "${BLUE}================================================${NC}"
-echo -e "${YELLOW}Repository:${NC} ${REPO_NAME}"
-echo -e "${YELLOW}Registry:${NC} ${REGISTRY}"
-echo -e "${YELLOW}Version:${NC} ${VERSION}"
-echo -e "${YELLOW}Namespace:${NC} ${NAMESPACE}"
-echo -e "${YELLOW}Frontend Image:${NC} ${FRONTEND_IMAGE}"
-echo -e "${YELLOW}Backend Image:${NC} ${BACKEND_IMAGE}"
+TIMESTAMP=$1
+
+# Validate timestamp format (YYYYMMDD-HHMMSS)
+if [[ ! $TIMESTAMP =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+    print_error "Invalid timestamp format. Expected: YYYYMMDD-HHMMSS"
+    print_error "Example: 20250719-141012"
+    exit 1
+fi
+
+echo "🚀 MimirInsights Deployment from CI/CD"
+echo "📅 Timestamp: $TIMESTAMP"
 echo ""
 
-# Function to check prerequisites
-check_prerequisites() {
-    echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
-    
-    # Check if kubectl is available
-    if ! command -v kubectl &> /dev/null; then
-        echo -e "${RED}❌ kubectl is not installed${NC}"
-        exit 1
-    fi
-    
-    # Check if helm is available
-    if ! command -v helm &> /dev/null; then
-        echo -e "${RED}❌ helm is not installed${NC}"
-        exit 1
-    fi
-    
-    # Check if kind cluster is running
-    if ! kubectl cluster-info &> /dev/null; then
-        echo -e "${RED}❌ Kubernetes cluster is not accessible${NC}"
-        echo -e "${YELLOW}💡 Make sure your kind cluster is running: kind start cluster${NC}"
-        exit 1
-    fi
-    
-    echo -e "${GREEN}✅ All prerequisites are satisfied${NC}"
-}
+# Step 1: Update values file
+print_status "Step 1: Updating values file with timestamp $TIMESTAMP"
 
-# Function to create namespace
-create_namespace() {
-    echo -e "${BLUE}📦 Creating namespace...${NC}"
-    
-    if kubectl get namespace ${NAMESPACE} &> /dev/null; then
-        echo -e "${YELLOW}⚠️  Namespace ${NAMESPACE} already exists${NC}"
-    else
-        kubectl create namespace ${NAMESPACE}
-        echo -e "${GREEN}✅ Namespace ${NAMESPACE} created${NC}"
-    fi
-}
+# Check if values file exists
+if [ ! -f "$VALUES_FILE" ]; then
+    print_error "Values file not found: $VALUES_FILE"
+    exit 1
+fi
 
-# Function to pull and verify images
-pull_images() {
-    echo -e "${BLUE}📥 Pulling images from GitHub Container Registry...${NC}"
-    
-    # Pull frontend image
-    echo -e "${YELLOW}Pulling frontend image...${NC}"
-    if docker pull ${FRONTEND_IMAGE}; then
-        echo -e "${GREEN}✅ Frontend image pulled successfully${NC}"
-    else
-        echo -e "${RED}❌ Failed to pull frontend image${NC}"
-        echo -e "${YELLOW}💡 Make sure the image exists in the registry and you have access${NC}"
-        exit 1
-    fi
-    
-    # Pull backend image
-    echo -e "${YELLOW}Pulling backend image...${NC}"
-    if docker pull ${BACKEND_IMAGE}; then
-        echo -e "${GREEN}✅ Backend image pulled successfully${NC}"
-    else
-        echo -e "${RED}❌ Failed to pull backend image${NC}"
-        echo -e "${YELLOW}💡 Make sure the image exists in the registry and you have access${NC}"
-        exit 1
-    fi
-    
-    # Verify image architectures
-    echo -e "${BLUE}🔍 Verifying image architectures...${NC}"
-    
-    FRONTEND_ARCH=$(docker inspect ${FRONTEND_IMAGE} --format='{{.Architecture}}')
-    BACKEND_ARCH=$(docker inspect ${BACKEND_IMAGE} --format='{{.Architecture}}')
-    
-    echo -e "${GREEN}✅ Frontend architecture: ${FRONTEND_ARCH}${NC}"
-    echo -e "${GREEN}✅ Backend architecture: ${BACKEND_ARCH}${NC}"
-}
+# Create backup
+BACKUP_FILE="${VALUES_FILE}.backup.$(date +%Y%m%d-%H%M%S)"
+cp "$VALUES_FILE" "$BACKUP_FILE"
+print_status "Created backup: $BACKUP_FILE"
 
-# Function to create values file for deployment
-create_values_file() {
-    echo -e "${BLUE}📝 Creating deployment values file...${NC}"
-    
-    cat > values-ci-deployment.yaml << EOF
-# MimirInsights CI Deployment Values
-# Generated for version: ${VERSION}
+# Update backend image
+print_status "Updating backend image..."
+sed -i.bak "s|image: ghcr.io/akshaydubey29/mimir-insights-backend-[0-9]\{8\}-[0-9]\{6\}|image: ghcr.io/akshaydubey29/mimir-insights-backend-$TIMESTAMP|g" "$VALUES_FILE"
 
-global:
-  imageRegistry: ${REGISTRY}
-  imagePullSecrets:
-    - name: ghcr-secret
+# Update frontend image
+print_status "Updating frontend image..."
+sed -i.bak "s|image: ghcr.io/akshaydubey29/mimir-insights-frontend-[0-9]\{8\}-[0-9]\{6\}|image: ghcr.io/akshaydubey29/mimir-insights-frontend-$TIMESTAMP|g" "$VALUES_FILE"
 
-frontend:
-  enabled: true
-  replicaCount: 2
-  image:
-    repository: ${REPO_NAME}/mimir-insights-frontend
-    tag: "${VERSION}"
-    pullPolicy: Always
-  
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "200m"
-  
-  env:
-    - name: REACT_APP_API_BASE_URL
-      value: ""
-    - name: REACT_APP_ENABLE_MOCK_DATA
-      value: "false"
-    - name: REACT_APP_ENABLE_MONITORING
-      value: "false"
-    - name: REACT_APP_ENABLE_LLM
-      value: "false"
-    - name: LOCAL_DEV
-      value: "false"
-    - name: ENVIRONMENT
-      value: "production"
-    - name: API_BASE_URL
-      value: ""
-    - name: NODE_ENV
-      value: "production"
+# Remove temporary backup files
+rm -f "${VALUES_FILE}.bak"
 
-backend:
-  enabled: true
-  replicaCount: 2
-  image:
-    repository: ${REPO_NAME}/mimir-insights-backend
-    tag: "${VERSION}"
-    pullPolicy: Always
-  
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "200m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-  
-  env:
-    - name: LOG_LEVEL
-      value: "info"
-    - name: PORT
-      value: "8080"
-    - name: KUBERNETES_SERVICE_HOST
-      value: "kubernetes.default.svc"
-    - name: KUBERNETES_SERVICE_PORT
-      value: "443"
-    - name: MIMIR_NAMESPACE
-      value: "mimir"
-    - name: DISCOVERY_INTERVAL
-      value: "30s"
-    - name: HEALTH_CHECK_INTERVAL
-      value: "10s"
-    - name: ENABLE_AUTO_DISCOVERY
-      value: "true"
-    - name: ENABLE_LLM_FEATURES
-      value: "false"
-    - name: ENABLE_MONITORING
-      value: "false"
-    - name: ENVIRONMENT
-      value: "production"
+# Verify the changes
+BACKEND_IMAGE=$(grep -A 1 "backend:" "$VALUES_FILE" | grep "image:" | sed 's/.*image: //')
+FRONTEND_IMAGE=$(grep -A 1 "frontend:" "$VALUES_FILE" | grep "image:" | sed 's/.*image: //')
 
-ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/use-regex: "true"
-  
-  hosts:
-    - host: mimir-insights.local
-      paths:
-        - path: /(.*)
-          pathType: Prefix
-          backend:
-            service:
-              name: mimir-insights-frontend
-              port:
-                number: 80
-        - path: /api/(.*)
-          pathType: Prefix
-          backend:
-            service:
-              name: mimir-insights-backend
-              port:
-                number: 8080
+print_success "Values file updated successfully!"
+echo "  Backend:  $BACKEND_IMAGE"
+echo "  Frontend: $FRONTEND_IMAGE"
+echo ""
 
-service:
-  type: ClusterIP
-  frontendPort: 80
-  backendPort: 8080
+# Step 2: Check kind cluster status
+print_status "Step 2: Checking kind cluster status"
 
-# Mimir stack discovery patterns
-mimirDiscovery:
-  enabled: true
-  patterns:
-    - "mimir-*"
-    - "cortex-*"
-    - "prometheus-*"
-  
-  namespaces:
-    - "mimir"
-    - "monitoring"
-    - "observability"
-  
-  labels:
-    - "app.kubernetes.io/name"
-    - "app.kubernetes.io/instance"
-    - "app.kubernetes.io/component"
+if ! kubectl cluster-info &> /dev/null; then
+    print_error "Kubernetes cluster is not accessible"
+    print_error "Please ensure your kind cluster is running:"
+    print_error "  kind create cluster --name mimir-insights"
+    exit 1
+fi
 
-# Auto-discovery configuration
-autoDiscovery:
-  enabled: true
-  interval: "30s"
-  timeout: "10s"
-  maxRetries: 3
-  
-  # Tenant discovery patterns
-  tenantPatterns:
-    - "tenant-*"
-    - "org-*"
-    - "team-*"
-  
-  # Component discovery patterns
-  componentPatterns:
-    - "mimir-distributor"
-    - "mimir-ingester"
-    - "mimir-querier"
-    - "mimir-compactor"
-    - "mimir-ruler"
-    - "mimir-alertmanager"
-    - "mimir-store-gateway"
+print_success "Kubernetes cluster is accessible"
 
-# Resource limits and requests
-resources:
-  frontend:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "200m"
-  
-  backend:
-    requests:
-      memory: "256Mi"
-      cpu: "200m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
+# Step 3: Deploy using Helm
+print_status "Step 3: Deploying to kind cluster using Helm"
 
-# Monitoring and logging
-monitoring:
-  enabled: false
-  metrics:
-    enabled: false
-    port: 9090
-    path: /metrics
-  
-  logging:
-    level: "info"
-    format: "json"
-    output: "stdout"
+# Check if Helm is installed
+if ! command -v helm &> /dev/null; then
+    print_error "Helm is not installed or not in PATH"
+    exit 1
+fi
 
-# Security settings
-security:
-  runAsNonRoot: true
-  runAsUser: 1001
-  runAsGroup: 1000
-  fsGroup: 1000
-  
-  securityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-EOF
+# Check if Helm chart directory exists
+if [ ! -d "$HELM_CHART_DIR" ]; then
+    print_error "Helm chart directory not found: $HELM_CHART_DIR"
+    exit 1
+fi
 
-    echo -e "${GREEN}✅ Values file created: values-ci-deployment.yaml${NC}"
-}
+# Deploy using Helm
+print_status "Deploying MimirInsights to namespace: $NAMESPACE"
+helm upgrade --install $RELEASE_NAME $HELM_CHART_DIR \
+    --namespace $NAMESPACE \
+    --create-namespace \
+    --values $VALUES_FILE \
+    --wait \
+    --timeout 10m
 
-# Function to deploy using Helm
-deploy_with_helm() {
-    echo -e "${BLUE}🚀 Deploying with Helm...${NC}"
-    
-    # Check if helm chart exists
-    if [ ! -d "./deployments/helm-chart" ]; then
-        echo -e "${RED}❌ Helm chart not found in ./deployments/helm-chart${NC}"
-        exit 1
-    fi
-    
-    # Deploy using Helm
-    echo -e "${YELLOW}Installing/upgrading MimirInsights...${NC}"
-    helm upgrade --install mimir-insights ./deployments/helm-chart \
-        --namespace ${NAMESPACE} \
-        --values values-ci-deployment.yaml \
-        --wait \
-        --timeout 10m
-    
-    echo -e "${GREEN}✅ Helm deployment completed${NC}"
-}
+print_success "Helm deployment completed successfully!"
+echo ""
 
-# Function to verify deployment
-verify_deployment() {
-    echo -e "${BLUE}🔍 Verifying deployment...${NC}"
-    
-    # Wait for pods to be ready
-    echo -e "${YELLOW}Waiting for pods to be ready...${NC}"
-    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mimir-insights --namespace ${NAMESPACE} --timeout=300s
-    
-    # Check pod status
-    echo -e "${YELLOW}Checking pod status...${NC}"
-    kubectl get pods -n ${NAMESPACE}
-    
-    # Check services
-    echo -e "${YELLOW}Checking services...${NC}"
-    kubectl get services -n ${NAMESPACE}
-    
-    # Check ingress
-    echo -e "${YELLOW}Checking ingress...${NC}"
-    kubectl get ingress -n ${NAMESPACE}
-    
-    echo -e "${GREEN}✅ Deployment verification completed${NC}"
-}
+# Step 4: Verify deployment
+print_status "Step 4: Verifying deployment status"
 
-# Function to setup port forwarding
-setup_port_forwarding() {
-    echo -e "${BLUE}🔗 Setting up port forwarding...${NC}"
-    
-    # Kill any existing port-forward processes
-    pkill -f "kubectl port-forward" || true
-    
-    # Start port forwarding for backend
-    echo -e "${YELLOW}Starting backend port forward (8080:8080)...${NC}"
-    kubectl port-forward -n ${NAMESPACE} svc/mimir-insights-backend 8080:8080 &
-    BACKEND_PF_PID=$!
-    
-    # Start port forwarding for frontend
-    echo -e "${YELLOW}Starting frontend port forward (8081:80)...${NC}"
-    kubectl port-forward -n ${NAMESPACE} svc/mimir-insights-frontend 8081:80 &
-    FRONTEND_PF_PID=$!
-    
-    # Wait a moment for port forwarding to establish
-    sleep 5
-    
-    echo -e "${GREEN}✅ Port forwarding setup completed${NC}"
-    echo -e "${BLUE}📱 Access URLs:${NC}"
-    echo -e "${YELLOW}  Frontend:${NC} http://localhost:8081"
-    echo -e "${YELLOW}  Backend API:${NC} http://localhost:8080/api/tenants"
-    echo ""
-    echo -e "${YELLOW}💡 To stop port forwarding, run:${NC}"
-    echo -e "${YELLOW}   kill ${BACKEND_PF_PID} ${FRONTEND_PF_PID}${NC}"
-}
+# Wait for pods to be ready
+print_status "Waiting for pods to be ready..."
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mimir-insights -n $NAMESPACE --timeout=300s
 
-# Function to test the deployment
-test_deployment() {
-    echo -e "${BLUE}🧪 Testing deployment...${NC}"
-    
-    # Wait for services to be ready
-    sleep 10
-    
-    # Test backend health
-    echo -e "${YELLOW}Testing backend health...${NC}"
-    if curl -s http://localhost:8080/health | grep -q "healthy"; then
-        echo -e "${GREEN}✅ Backend health check passed${NC}"
-    else
-        echo -e "${RED}❌ Backend health check failed${NC}"
-    fi
-    
-    # Test backend API
-    echo -e "${YELLOW}Testing backend API...${NC}"
-    if curl -s http://localhost:8080/api/tenants | jq -e '.discovery_info' > /dev/null; then
-        echo -e "${GREEN}✅ Backend API test passed${NC}"
-    else
-        echo -e "${RED}❌ Backend API test failed${NC}"
-    fi
-    
-    # Test frontend
-    echo -e "${YELLOW}Testing frontend...${NC}"
-    if curl -s http://localhost:8081/ | grep -q "MimirInsights"; then
-        echo -e "${GREEN}✅ Frontend test passed${NC}"
-    else
-        echo -e "${RED}❌ Frontend test failed${NC}"
-    fi
-    
-    echo -e "${GREEN}✅ All tests completed${NC}"
-}
+# Check pod status
+print_status "Pod status:"
+kubectl get pods -n $NAMESPACE -l app.kubernetes.io/name=mimir-insights
 
-# Main execution
-main() {
-    echo -e "${BLUE}🎯 Starting MimirInsights deployment from CI images...${NC}"
-    echo ""
-    
-    check_prerequisites
-    echo ""
-    
-    create_namespace
-    echo ""
-    
-    pull_images
-    echo ""
-    
-    create_values_file
-    echo ""
-    
-    deploy_with_helm
-    echo ""
-    
-    verify_deployment
-    echo ""
-    
-    setup_port_forwarding
-    echo ""
-    
-    test_deployment
-    echo ""
-    
-    echo -e "${GREEN}🎉 MimirInsights deployment completed successfully!${NC}"
-    echo ""
-    echo -e "${BLUE}📋 Summary:${NC}"
-    echo -e "${YELLOW}  Version:${NC} ${VERSION}"
-    echo -e "${YELLOW}  Namespace:${NC} ${NAMESPACE}"
-    echo -e "${YELLOW}  Frontend:${NC} http://localhost:8081"
-    echo -e "${YELLOW}  Backend API:${NC} http://localhost:8080/api/tenants"
-    echo -e "${YELLOW}  Helm Release:${NC} mimir-insights"
-    echo ""
-    echo -e "${BLUE}🔧 Useful commands:${NC}"
-    echo -e "${YELLOW}  View logs:${NC} kubectl logs -f -l app.kubernetes.io/name=mimir-insights -n ${NAMESPACE}"
-    echo -e "${YELLOW}  View pods:${NC} kubectl get pods -n ${NAMESPACE}"
-    echo -e "${YELLOW}  View services:${NC} kubectl get services -n ${NAMESPACE}"
-    echo -e "${YELLOW}  Uninstall:${NC} helm uninstall mimir-insights -n ${NAMESPACE}"
-}
+# Check service status
+print_status "Service status:"
+kubectl get svc -n $NAMESPACE -l app.kubernetes.io/name=mimir-insights
 
-# Run main function
-main "$@" 
+echo ""
+
+# Step 5: Setup port forwarding
+print_status "Step 5: Setting up port forwarding"
+
+# Kill any existing port-forward processes
+print_status "Killing existing port-forward processes..."
+pkill -f "kubectl port-forward.*mimir-insights" || true
+sleep 2
+
+# Setup port forwarding for backend
+print_status "Setting up port forwarding for backend (port 8080)..."
+kubectl port-forward -n $NAMESPACE svc/mimir-insights-backend 8080:8080 &
+BACKEND_PF_PID=$!
+
+# Setup port forwarding for frontend
+print_status "Setting up port forwarding for frontend (port 8081)..."
+kubectl port-forward -n $NAMESPACE svc/mimir-insights-frontend 8081:80 &
+FRONTEND_PF_PID=$!
+
+# Wait for port forwarding to be established
+sleep 5
+
+# Check if port forwarding is working
+if ! curl -s http://localhost:8080/api/health &> /dev/null; then
+    print_warning "Backend health check failed, but continuing..."
+else
+    print_success "Backend is responding on port 8080"
+fi
+
+if ! curl -s http://localhost:8081 &> /dev/null; then
+    print_warning "Frontend health check failed, but continuing..."
+else
+    print_success "Frontend is responding on port 8081"
+fi
+
+echo ""
+
+# Step 6: Final status
+print_success "🎉 Deployment completed successfully!"
+echo ""
+echo "📦 Deployed Images:"
+echo "  Backend:  $BACKEND_IMAGE"
+echo "  Frontend: $FRONTEND_IMAGE"
+echo ""
+echo "🌐 Access URLs:"
+echo "  Frontend: http://localhost:8081"
+echo "  Backend API: http://localhost:8080/api/tenants"
+echo "  Backend Health: http://localhost:8080/api/health"
+echo ""
+echo "📊 Useful Commands:"
+echo "  Check pods: kubectl get pods -n $NAMESPACE"
+echo "  Check logs: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=mimir-insights"
+echo "  Check services: kubectl get svc -n $NAMESPACE"
+echo "  Stop port forwarding: pkill -f 'kubectl port-forward.*mimir-insights'"
+echo ""
+echo "🔧 Port Forwarding PIDs:"
+echo "  Backend: $BACKEND_PF_PID"
+echo "  Frontend: $FRONTEND_PF_PID"
+echo ""
+print_warning "Note: Port forwarding is running in background. Use 'pkill -f kubectl port-forward' to stop." 

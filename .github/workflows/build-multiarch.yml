@@ -29,16 +29,11 @@ on:
         description: 'Version tag (e.g., v1.0.0)'
         required: true
         default: 'v1.0.0'
-      push_images:
-        description: 'Push images to registry'
-        required: true
-        default: true
-        type: boolean
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_FRONTEND: ${{ github.repository }}/mimir-insights-frontend
-  IMAGE_NAME_BACKEND: ${{ github.repository }}/mimir-insights-backend
+  IMAGE_NAME_FRONTEND: akshaydubey29/mimir-insights-frontend
+  IMAGE_NAME_BACKEND: akshaydubey29/mimir-insights-backend
   BUILD_DATE: ${{ github.event.head_commit.timestamp || github.event.schedule || format('{0:yyyy-MM-ddTHH:mm:ssZ}', github.event.created_at) }}
 
 jobs:
@@ -48,20 +43,6 @@ jobs:
       contents: read
       packages: write
       id-token: write
-
-    strategy:
-      matrix:
-        include:
-          - name: frontend
-            dockerfile: Dockerfile.frontend
-            context: .
-            platforms: linux/amd64,linux/arm64
-            image_name: ${{ env.IMAGE_NAME_FRONTEND }}
-          - name: backend
-            dockerfile: Dockerfile.backend.multiarch
-            context: .
-            platforms: linux/amd64,linux/arm64
-            image_name: ${{ env.IMAGE_NAME_BACKEND }}
 
     steps:
     - name: Checkout repository
@@ -75,48 +56,186 @@ jobs:
         platforms: linux/amd64,linux/arm64
 
     - name: Log in to Container Registry
-      if: github.event_name != 'pull_request' && github.event.inputs.push_images != 'false'
+      if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
+    - name: Generate timestamp tag
+      id: timestamp
+      run: |
+        TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+        echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+        echo "Generated timestamp: $TIMESTAMP"
+
+    - name: Setup Node.js for frontend build
+      uses: actions/setup-node@v4
       with:
-        images: ${{ matrix.image_name }}
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: web-ui/package-lock.json
+
+    - name: Build React application
+      run: |
+        cd web-ui
+        npm ci --prefer-offline --no-audit --no-fund
+        DISABLE_ESLINT_PLUGIN=true \
+        GENERATE_SOURCEMAP=false \
+        SKIP_PREFLIGHT_CHECK=true \
+        REACT_APP_ENABLE_MOCK_DATA=false \
+        REACT_APP_ENABLE_MONITORING=false \
+        REACT_APP_ENABLE_LLM=false \
+        REACT_APP_API_BASE_URL=/api \
+        npm run build
+        cd ..
+
+    - name: Setup Go for backend build
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Build backend binary
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+        -a -installsuffix cgo \
+        -ldflags="-w -s -X main.Version=${{ steps.timestamp.outputs.timestamp }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
+        -o backend-amd64 ./cmd/server
+        
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+        -a -installsuffix cgo \
+        -ldflags="-w -s -X main.Version=${{ steps.timestamp.outputs.timestamp }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
+        -o backend-arm64 ./cmd/server
+
+    - name: Build and push backend multi-arch image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: |
+          FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+          RUN apk add --no-cache git ca-certificates tzdata
+          WORKDIR /app
+          COPY go.mod go.sum ./
+          RUN go mod download && go mod tidy
+          COPY . .
+          ARG TARGETPLATFORM
+          ARG BUILDPLATFORM
+          ARG TARGETOS
+          ARG TARGETARCH
+          RUN echo "Building for $TARGETOS/$TARGETARCH" && \
+              CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
+              -a -installsuffix cgo \
+              -ldflags="-w -s -X main.Version=${{ steps.timestamp.outputs.timestamp }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
+              -o main ./cmd/server
+          
+          FROM alpine:3.19
+          RUN apk --no-cache add ca-certificates tzdata curl
+          RUN addgroup -g 1000 -S appgroup && \
+              adduser -u 1001 -S appuser -G appgroup
+          WORKDIR /app
+          COPY --from=builder /app/main .
+          COPY --from=builder /app/config ./config
+          RUN chown -R appuser:appgroup /app
+          USER appuser
+          EXPOSE 8080
+          HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+            CMD curl -f http://localhost:8080/api/health || exit 1
+          CMD ["./main"]
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
-          type=raw,value=${{ github.event.inputs.version || 'v1.0.0' }},enable={{is_default_branch}}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest
         labels: |
-          org.opencontainers.image.title=MimirInsights ${{ matrix.name }}
-          org.opencontainers.image.description=MimirInsights ${{ matrix.name }} component
+          org.opencontainers.image.title=MimirInsights Backend
+          org.opencontainers.image.description=MimirInsights Backend component
           org.opencontainers.image.vendor=GitHub
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}
           org.opencontainers.image.created=${{ env.BUILD_DATE }}
-
-    - name: Build and push ${{ matrix.name }} image
-      uses: docker/build-push-action@v5
-      with:
-        context: ${{ matrix.context }}
-        file: ${{ matrix.dockerfile }}
-        platforms: ${{ matrix.platforms }}
-        push: ${{ github.event_name != 'pull_request' && github.event.inputs.push_images != 'false' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+          org.opencontainers.image.version=${{ steps.timestamp.outputs.timestamp }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         build-args: |
           BUILDKIT_INLINE_CACHE=1
           BUILD_DATE=${{ env.BUILD_DATE }}
           VCS_REF=${{ github.sha }}
-          VERSION=${{ github.event.inputs.version || 'v1.0.0' }}
+          VERSION=${{ steps.timestamp.outputs.timestamp }}
+
+    - name: Build and push frontend multi-arch image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: |
+          FROM nginx:alpine
+          ENV PRODUCTION_TAG=${{ steps.timestamp.outputs.timestamp }}
+          ENV BUILD_DATE=${{ env.BUILD_DATE }}
+          ENV VCS_REF=${{ github.sha }}
+          COPY web-ui/build /usr/share/nginx/html
+          COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
+          RUN mkdir -p /usr/share/nginx/html/config && \
+              echo 'window.CONFIG = {' > /usr/share/nginx/html/config/config.js && \
+              echo '  apiBaseUrl: "http://mimir-insights-backend:8080/api",' >> /usr/share/nginx/html/config/config.js && \
+              echo '  version: "PRODUCTION-${{ steps.timestamp.outputs.timestamp }}",' >> /usr/share/nginx/html/config/config.js && \
+              echo '  buildDate: "${{ env.BUILD_DATE }}",' >> /usr/share/nginx/html/config/config.js && \
+              echo '  gitCommit: "${{ github.sha }}"' >> /usr/share/nginx/html/config/config.js && \
+              echo '};' >> /usr/share/nginx/html/config/config.js && \
+              chmod 755 /usr/share/nginx/html/config
+          RUN echo '#!/bin/sh' > /start.sh && \
+              echo 'set -e' >> /start.sh && \
+              echo '' >> /start.sh && \
+              echo 'echo "🚀 Starting MimirInsights Frontend..."' >> /start.sh && \
+              echo 'echo "🛠 Version: PRODUCTION-${{ steps.timestamp.outputs.timestamp }}"' >> /start.sh && \
+              echo 'echo "🏗 Architecture: $(uname -m)"' >> /start.sh && \
+              echo 'echo "✅ Using web-ui/nginx.conf with API proxy support"' >> /start.sh && \
+              echo '' >> /start.sh && \
+              echo 'nginx -t' >> /start.sh && \
+              echo '' >> /start.sh && \
+              echo 'exec nginx -g "daemon off;"' >> /start.sh && \
+              chmod +x /start.sh
+          EXPOSE 80
+          ENTRYPOINT ["/start.sh"]
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.timestamp.outputs.timestamp }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+        labels: |
+          org.opencontainers.image.title=MimirInsights Frontend
+          org.opencontainers.image.description=MimirInsights Frontend component
+          org.opencontainers.image.vendor=GitHub
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ env.BUILD_DATE }}
+          org.opencontainers.image.version=${{ steps.timestamp.outputs.timestamp }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+          BUILD_DATE=${{ env.BUILD_DATE }}
+          VCS_REF=${{ github.sha }}
+          VERSION=${{ steps.timestamp.outputs.timestamp }}
+
+    - name: Output build summary
+      if: github.event_name != 'pull_request'
+      run: |
+        echo "✅ Successfully built and pushed multi-architecture images"
+        echo "📦 Backend Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }}"
+        echo "📦 Frontend Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.timestamp.outputs.timestamp }}"
+        echo "🏷️  Timestamp: ${{ steps.timestamp.outputs.timestamp }}"
+        echo "📅 Build Date: ${{ env.BUILD_DATE }}"
+        echo ""
+        echo "🚀 Next steps:"
+        echo "1. Update values-production-final.yaml with the new timestamp tag"
+        echo "2. Deploy to your local kind cluster using Helm"
+        echo ""
+        echo "📋 Update your values file with:"
+        echo "backend:"
+        echo "  image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }}"
+        echo "frontend:"
+        echo "  image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.timestamp.outputs.timestamp }}"
 
   test-images:
     needs: build-and-push
@@ -137,14 +256,20 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Generate timestamp tag
+      id: timestamp
+      run: |
+        TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+        echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
     - name: Test backend image
       run: |
-        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest --version || echo "Backend image test completed"
-        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest --help || echo "Backend help test completed"
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }} --version || echo "Backend image test completed"
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }} --help || echo "Backend help test completed"
 
     - name: Test frontend image
       run: |
-        docker run --rm -d --name test-frontend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+        docker run --rm -d --name test-frontend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.timestamp.outputs.timestamp }}
         sleep 10
         docker logs test-frontend
         docker stop test-frontend
@@ -153,50 +278,71 @@ jobs:
   create-release:
     needs: [build-and-push, test-images]
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.push_images == 'true'
+    if: github.event_name == 'workflow_dispatch'
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Generate timestamp tag
+      id: timestamp
+      run: |
+        TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+        echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+        echo "Generated timestamp: $TIMESTAMP"
 
     - name: Create Release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.event.inputs.version }}
-        release_name: Release ${{ github.event.inputs.version }}
+        tag_name: ${{ github.event.inputs.version }}-${{ steps.timestamp.outputs.timestamp }}
+        release_name: Release ${{ github.event.inputs.version }} (${{ steps.timestamp.outputs.timestamp }})
         body: |
-          ## MimirInsights ${{ github.event.inputs.version }}
+          ## MimirInsights ${{ github.event.inputs.version }} (${{ steps.timestamp.outputs.timestamp }})
           
           ### Multi-Architecture Docker Images
           
           **Frontend Image:**
-          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.event.inputs.version }}`
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.timestamp.outputs.timestamp }}`
           - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest`
           
           **Backend Image:**
-          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.event.inputs.version }}`
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }}`
           - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest`
           
           ### Platforms Supported
           - linux/amd64
           - linux/arm64
           
-          ### Deployment
+          ### Local Deployment
           
-          Update your Helm values to use the new images:
+          To deploy locally to your kind cluster:
           
+          1. Update `deployments/helm-chart/values-production-final.yaml`:
           ```yaml
-          frontend:
-            image:
-              repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
-              tag: ${{ github.event.inputs.version }}
-              
           backend:
-            image:
-              repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
-              tag: ${{ github.event.inputs.version }}
+            image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.timestamp.outputs.timestamp }}
+          frontend:
+            image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.timestamp.outputs.timestamp }}
           ```
+          
+          2. Deploy using Helm:
+          ```bash
+          helm upgrade --install mimir-insights ./deployments/helm-chart \
+            --namespace mimir-insights \
+            --values ./deployments/helm-chart/values-production-final.yaml \
+            --wait
+          ```
+          
+          3. Setup port forwarding:
+          ```bash
+          kubectl port-forward -n mimir-insights svc/mimir-insights-backend 8080:8080 &
+          kubectl port-forward -n mimir-insights svc/mimir-insights-frontend 8081:80 &
+          ```
+          
+          ### Access URLs
+          - Frontend: http://localhost:8081
+          - Backend API: http://localhost:8080/api/tenants
         draft: false
         prerelease: false 

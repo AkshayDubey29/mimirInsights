@@ -1,0 +1,198 @@
+# MimirInsights CI Deployment Values
+# Generated for version: latest
+
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets:
+    - name: ghcr-secret
+
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: akshaydubey29/mimir-insights-frontend
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  
+  env:
+    - name: REACT_APP_API_BASE_URL
+      value: ""
+    - name: REACT_APP_ENABLE_MOCK_DATA
+      value: "false"
+    - name: REACT_APP_ENABLE_MONITORING
+      value: "false"
+    - name: REACT_APP_ENABLE_LLM
+      value: "false"
+    - name: LOCAL_DEV
+      value: "false"
+    - name: ENVIRONMENT
+      value: "production"
+    - name: API_BASE_URL
+      value: ""
+    - name: NODE_ENV
+      value: "production"
+
+backend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: akshaydubey29/mimir-insights-backend
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  env:
+    - name: LOG_LEVEL
+      value: "info"
+    - name: PORT
+      value: "8080"
+    - name: KUBERNETES_SERVICE_HOST
+      value: "kubernetes.default.svc"
+    - name: KUBERNETES_SERVICE_PORT
+      value: "443"
+    - name: MIMIR_NAMESPACE
+      value: "mimir"
+    - name: DISCOVERY_INTERVAL
+      value: "30s"
+    - name: HEALTH_CHECK_INTERVAL
+      value: "10s"
+    - name: ENABLE_AUTO_DISCOVERY
+      value: "true"
+    - name: ENABLE_LLM_FEATURES
+      value: "false"
+    - name: ENABLE_MONITORING
+      value: "false"
+    - name: ENVIRONMENT
+      value: "production"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+  
+  hosts:
+    - host: mimir-insights.local
+      paths:
+        - path: /(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: mimir-insights-frontend
+              port:
+                number: 80
+        - path: /api/(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: mimir-insights-backend
+              port:
+                number: 8080
+
+service:
+  type: ClusterIP
+  frontendPort: 80
+  backendPort: 8080
+
+# Mimir stack discovery patterns
+mimirDiscovery:
+  enabled: true
+  patterns:
+    - "mimir-*"
+    - "cortex-*"
+    - "prometheus-*"
+  
+  namespaces:
+    - "mimir"
+    - "monitoring"
+    - "observability"
+  
+  labels:
+    - "app.kubernetes.io/name"
+    - "app.kubernetes.io/instance"
+    - "app.kubernetes.io/component"
+
+# Auto-discovery configuration
+autoDiscovery:
+  enabled: true
+  interval: "30s"
+  timeout: "10s"
+  maxRetries: 3
+  
+  # Tenant discovery patterns
+  tenantPatterns:
+    - "tenant-*"
+    - "org-*"
+    - "team-*"
+  
+  # Component discovery patterns
+  componentPatterns:
+    - "mimir-distributor"
+    - "mimir-ingester"
+    - "mimir-querier"
+    - "mimir-compactor"
+    - "mimir-ruler"
+    - "mimir-alertmanager"
+    - "mimir-store-gateway"
+
+# Resource limits and requests
+resources:
+  frontend:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  
+  backend:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Monitoring and logging
+monitoring:
+  enabled: false
+  metrics:
+    enabled: false
+    port: 9090
+    path: /metrics
+  
+  logging:
+    level: "info"
+    format: "json"
+    output: "stdout"
+
+# Security settings
+security:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1000
+  fsGroup: 1000
+  
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
