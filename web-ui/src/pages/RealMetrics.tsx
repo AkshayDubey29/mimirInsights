@@ -160,7 +160,7 @@ export default function RealMetrics() {
 
       {/* Metrics Data */}
       <Grid container spacing={3}>
-        {Object.entries(data.metrics).map(([endpoint, tenantMetrics]) => (
+        {Object.entries(data.metrics).map(([endpoint, tenantMetrics]: [string, any]) => (
           <Grid item xs={12} key={endpoint}>
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMore />}>
@@ -175,7 +175,7 @@ export default function RealMetrics() {
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
-                  {Object.entries(tenantMetrics.metrics || {}).map(([metricName, series]) => (
+                  {Object.entries(tenantMetrics.metrics || {}).map(([metricName, series]: [string, any]) => (
                     <Grid item xs={12} md={6} key={metricName}>
                       <Card variant="outlined">
                         <CardHeader
