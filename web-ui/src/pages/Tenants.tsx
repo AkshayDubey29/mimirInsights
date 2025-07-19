@@ -89,67 +89,6 @@ import { useEnhancedTenants } from '../api/useTenants';
 import { config } from '../config/environment';
 import { DataGridWithPagination, Column } from '../components/DataGridWithPagination';
 
-interface TenantMetrics {
-  timestamp: string;
-  ingestionRate: number;
-  queryRate: number;
-  seriesCount: number;
-  samplesPerSecond: number;
-  storageUsageGB: number;
-  cpuUsage: number;
-  memoryUsage: number;
-  errorRate: number;
-}
-
-interface TenantConfiguration {
-  maxGlobalSeriesPerUser: number;
-  ingestionRate: number;
-  maxLabelNamesPerSeries: number;
-  maxMetadataPerUser: number;
-  queryTimeout: string;
-  maxQueryLength: string;
-  maxQueryParallelism: number;
-  maxOutstandingRequestsPerTenant: number;
-}
-
-interface TenantAlert {
-  id: string;
-  severity: 'critical' | 'warning' | 'info';
-  title: string;
-  description: string;
-  timestamp: string;
-  resolved: boolean;
-}
-
-interface EnhancedTenant {
-  id: string;
-  name: string;
-  namespace: string;
-  status: 'healthy' | 'warning' | 'critical' | 'inactive';
-  discoveredAt: string;
-  lastSeen: string;
-  metrics: TenantMetrics[];
-  configuration: TenantConfiguration;
-  alerts: TenantAlert[];
-  components: {
-    alloy: { replicas: number; healthy: number; status: string };
-    distributors: { count: number; healthy: number };
-    ingesters: { count: number; healthy: number };
-    queriers: { count: number; healthy: number };
-  };
-  trends: {
-    ingestionTrend: 'up' | 'down' | 'stable';
-    errorTrend: 'up' | 'down' | 'stable';
-    storageTrend: 'up' | 'down' | 'stable';
-  };
-  recommendations: Array<{
-    type: 'optimization' | 'scaling' | 'configuration';
-    title: string;
-    impact: 'high' | 'medium' | 'low';
-    description: string;
-  }>;
-}
-
 const StatusChip: React.FC<{ status: string }> = ({ status }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
