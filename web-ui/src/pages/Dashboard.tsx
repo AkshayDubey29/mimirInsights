@@ -60,7 +60,7 @@ const Dashboard: React.FC = () => {
       const data = await response.json();
       setMetrics(data);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch dashboard metrics';
+      const errorMessage = (err as Error)?.message || 'Failed to fetch dashboard metrics';
       setError(errorMessage);
       // Calculate basic metrics from tenants data if available
       if (tenants && tenants.length > 0) {
