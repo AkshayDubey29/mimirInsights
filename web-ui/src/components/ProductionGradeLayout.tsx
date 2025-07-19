@@ -63,7 +63,6 @@ import {
   ExpandMore as ExpandMoreIcon,
   Notifications as NotificationsIcon,
   AccountCircle as AccountCircleIcon,
-  Settings as SettingsIcon,
   Help as HelpIcon,
   ExitToApp as ExitToAppIcon,
   AutoAwesome as AutoAwesomeIcon,
@@ -72,7 +71,6 @@ import {
   Timeline as TimelineIcon,
   Security as SecurityIcon,
   BugReport as BugReportIcon,
-  Speed as SpeedIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
