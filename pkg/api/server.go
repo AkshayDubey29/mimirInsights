@@ -1732,3 +1732,250 @@ func (s *Server) GetRealMetrics(c *gin.Context) {
 	s.recordMetrics(c, http.StatusOK, start)
 	c.JSON(http.StatusOK, productionData)
 }
+
+// AnalyzeTenantIntelligently performs intelligent analysis of tenant limits
+func (s *Server) AnalyzeTenantIntelligently(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	// Get tenant name from query parameter
+	tenantName := c.Query("tenant")
+	if tenantName == "" {
+		s.recordError(c, "missing_tenant", start)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant parameter is required"})
+		return
+	}
+
+	logrus.Infof("🔍 [INTELLIGENT] Starting intelligent analysis for tenant: %s", tenantName)
+
+	// Perform intelligent analysis
+	analysis, err := s.limitsAnalyzer.AnalyzeTenantIntelligently(ctx, tenantName)
+	if err != nil {
+		logrus.Errorf("Failed to analyze tenant %s intelligently: %v", tenantName, err)
+		s.recordError(c, "analysis_failed", start)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Analysis failed: %v", err)})
+		return
+	}
+
+	// Build comprehensive response
+	response := map[string]interface{}{
+		"tenant_name":             analysis.TenantName,
+		"analysis_time":           analysis.AnalysisTime,
+		"risk_score":              analysis.RiskScore,
+		"reliability_score":       analysis.ReliabilityScore,
+		"performance_score":       analysis.PerformanceScore,
+		"cost_optimization_score": analysis.CostOptimizationScore,
+		"current_limits":          analysis.CurrentLimits,
+		"missing_limits":          analysis.MissingLimits,
+		"recommendations":         analysis.Recommendations,
+		"summary":                 analysis.Summary,
+		"total_recommendations":   len(analysis.Recommendations),
+		"critical_count":          0,
+		"high_priority_count":     0,
+		"medium_priority_count":   0,
+		"low_priority_count":      0,
+	}
+
+	// Count recommendations by priority
+	for _, rec := range analysis.Recommendations {
+		switch rec.Priority {
+		case "critical":
+			response["critical_count"] = response["critical_count"].(int) + 1
+		case "high":
+			response["high_priority_count"] = response["high_priority_count"].(int) + 1
+		case "medium":
+			response["medium_priority_count"] = response["medium_priority_count"].(int) + 1
+		case "low":
+			response["low_priority_count"] = response["low_priority_count"].(int) + 1
+		}
+	}
+
+	logrus.Infof("✅ [INTELLIGENT] Completed analysis for %s: %d recommendations, risk score: %.2f",
+		tenantName, len(analysis.Recommendations), analysis.RiskScore)
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, response)
+}
+
+// UpdateTenantLimit updates a specific limit for a tenant
+func (s *Server) UpdateTenantLimit(c *gin.Context) {
+	start := time.Now()
+
+	// Get tenant name from path parameter
+	tenantName := c.Param("tenant")
+	if tenantName == "" {
+		s.recordError(c, "missing_tenant", start)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tenant parameter is required"})
+		return
+	}
+
+	// Parse request body
+	var updateRequest struct {
+		LimitName string      `json:"limit_name" binding:"required"`
+		NewValue  interface{} `json:"new_value" binding:"required"`
+		Reason    string      `json:"reason"`
+		ApplyNow  bool        `json:"apply_now"`
+	}
+
+	if err := c.ShouldBindJSON(&updateRequest); err != nil {
+		s.recordError(c, "invalid_request", start)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid request: %v", err)})
+		return
+	}
+
+	logrus.Infof("🔧 [UPDATE] Updating limit %s for tenant %s to %v", updateRequest.LimitName, tenantName, updateRequest.NewValue)
+
+	// TODO: Implement actual limit update logic
+	// This would involve:
+	// 1. Validating the new value
+	// 2. Updating runtime overrides ConfigMap
+	// 3. Applying the change to Mimir
+	// 4. Monitoring for any issues
+
+	// For now, return a success response
+	response := map[string]interface{}{
+		"tenant_name": tenantName,
+		"limit_name":  updateRequest.LimitName,
+		"old_value":   "to_be_implemented",
+		"new_value":   updateRequest.NewValue,
+		"reason":      updateRequest.Reason,
+		"status":      "pending",
+		"applied":     updateRequest.ApplyNow,
+		"update_time": time.Now().UTC(),
+		"message":     "Limit update request received. Implementation pending.",
+	}
+
+	logrus.Infof("✅ [UPDATE] Limit update request processed for %s: %s", tenantName, updateRequest.LimitName)
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, response)
+}
+
+// GetLimitRecommendations gets intelligent recommendations for all tenants
+func (s *Server) GetLimitRecommendations(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	// Get discovery data for tenant information
+	discoveryResult := s.cacheManager.GetDiscoveryResult()
+	if discoveryResult == nil {
+		s.recordError(c, "cache_not_ready", start)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
+		return
+	}
+
+	// Get all tenant names
+	var tenantNames []string
+
+	// Add discovered tenants
+	for _, tenant := range discoveryResult.TenantNamespaces {
+		tenantNames = append(tenantNames, tenant.Name)
+	}
+
+	// Add detected tenants
+	if discoveryResult.Environment != nil && discoveryResult.Environment.DetectedTenants != nil {
+		for _, detectedTenant := range discoveryResult.Environment.DetectedTenants {
+			tenantNames = append(tenantNames, detectedTenant.Name)
+		}
+	}
+
+	// Perform intelligent analysis for each tenant
+	var allRecommendations []map[string]interface{}
+	var totalRiskScore float64
+	var totalReliabilityScore float64
+	var totalPerformanceScore float64
+	var totalCostOptimizationScore float64
+
+	for _, tenantName := range tenantNames {
+		analysis, err := s.limitsAnalyzer.AnalyzeTenantIntelligently(ctx, tenantName)
+		if err != nil {
+			logrus.Warnf("Failed to analyze tenant %s: %v", tenantName, err)
+			continue
+		}
+
+		tenantRecommendations := map[string]interface{}{
+			"tenant_name":             analysis.TenantName,
+			"risk_score":              analysis.RiskScore,
+			"reliability_score":       analysis.ReliabilityScore,
+			"performance_score":       analysis.PerformanceScore,
+			"cost_optimization_score": analysis.CostOptimizationScore,
+			"recommendations":         analysis.Recommendations,
+			"missing_limits":          analysis.MissingLimits,
+			"summary":                 analysis.Summary,
+		}
+
+		allRecommendations = append(allRecommendations, tenantRecommendations)
+
+		totalRiskScore += analysis.RiskScore
+		totalReliabilityScore += analysis.ReliabilityScore
+		totalPerformanceScore += analysis.PerformanceScore
+		totalCostOptimizationScore += analysis.CostOptimizationScore
+	}
+
+	// Calculate averages
+	tenantCount := float64(len(allRecommendations))
+	avgRiskScore := totalRiskScore / tenantCount
+	avgReliabilityScore := totalReliabilityScore / tenantCount
+	avgPerformanceScore := totalPerformanceScore / tenantCount
+	avgCostOptimizationScore := totalCostOptimizationScore / tenantCount
+
+	// Build comprehensive response
+	response := map[string]interface{}{
+		"tenant_recommendations": allRecommendations,
+		"total_tenants":          len(allRecommendations),
+		"average_scores": map[string]interface{}{
+			"risk_score":              avgRiskScore,
+			"reliability_score":       avgReliabilityScore,
+			"performance_score":       avgPerformanceScore,
+			"cost_optimization_score": avgCostOptimizationScore,
+		},
+		"overall_summary": map[string]interface{}{
+			"total_recommendations":           0,
+			"critical_recommendations":        0,
+			"high_priority_recommendations":   0,
+			"missing_limits_total":            0,
+			"reliability_issues":              0,
+			"performance_issues":              0,
+			"cost_optimization_opportunities": 0,
+		},
+		"timestamp": time.Now().UTC(),
+	}
+
+	// Calculate overall summary
+	for _, tenantRec := range allRecommendations {
+		if summary, ok := tenantRec["summary"].(map[string]interface{}); ok {
+			response["overall_summary"].(map[string]interface{})["total_recommendations"] =
+				response["overall_summary"].(map[string]interface{})["total_recommendations"].(int) +
+					summary["total_recommendations"].(int)
+
+			response["overall_summary"].(map[string]interface{})["critical_recommendations"] =
+				response["overall_summary"].(map[string]interface{})["critical_recommendations"].(int) +
+					summary["critical_recommendations"].(int)
+
+			response["overall_summary"].(map[string]interface{})["high_priority_recommendations"] =
+				response["overall_summary"].(map[string]interface{})["high_priority_recommendations"].(int) +
+					summary["high_priority_recommendations"].(int)
+
+			response["overall_summary"].(map[string]interface{})["missing_limits_total"] =
+				response["overall_summary"].(map[string]interface{})["missing_limits_total"].(int) +
+					summary["missing_limits"].(int)
+
+			response["overall_summary"].(map[string]interface{})["reliability_issues"] =
+				response["overall_summary"].(map[string]interface{})["reliability_issues"].(int) +
+					summary["reliability_issues"].(int)
+
+			response["overall_summary"].(map[string]interface{})["performance_issues"] =
+				response["overall_summary"].(map[string]interface{})["performance_issues"].(int) +
+					summary["performance_issues"].(int)
+
+			response["overall_summary"].(map[string]interface{})["cost_optimization_opportunities"] =
+				response["overall_summary"].(map[string]interface{})["cost_optimization_opportunities"].(int) +
+					summary["cost_optimization_opportunities"].(int)
+		}
+	}
+
+	logrus.Infof("✅ [RECOMMENDATIONS] Generated recommendations for %d tenants", len(allRecommendations))
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, response)
+}

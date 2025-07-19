@@ -14,6 +14,7 @@ import Config from './pages/Config';
 import Reports from './pages/Reports';
 import EnvironmentStatus from './components/EnvironmentStatus';
 import MemoryManagement from './pages/MemoryManagement';
+import IntelligentLimits from './pages/IntelligentLimits';
 
 const darkTheme = createTheme({
   palette: {
@@ -56,6 +57,7 @@ function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/tenants" element={<Tenants />} />
                 <Route path="/limits" element={<Limits />} />
+                <Route path="/intelligent-limits" element={<IntelligentLimits />} />
                 <Route path="/config" element={<Config />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/environment" element={<EnvironmentStatus />} />

@@ -90,6 +90,11 @@ func main() {
 		apiGroup.POST("/cache/memory/settings", server.UpdateMemorySettings)
 	}
 
+	// Intelligent limit analysis and management
+	apiGroup.GET("/analyze-tenant", server.AnalyzeTenantIntelligently)
+	apiGroup.GET("/limit-recommendations", server.GetLimitRecommendations)
+	apiGroup.PUT("/tenants/:tenant/limits", server.UpdateTenantLimit)
+
 	// Serve static files for UI
 	router.Static("/dashboard", "./web-ui/build")
 	router.StaticFile("/", "./web-ui/build/index.html")

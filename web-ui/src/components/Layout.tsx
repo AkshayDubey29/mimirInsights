@@ -69,6 +69,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       description: 'Analyze and optimize Mimir limits',
     },
     {
+      path: '/intelligent-limits',
+      label: 'AI Analysis',
+      icon: <AssessmentIcon />,
+      description: 'Intelligent limit recommendations',
+    },
+    {
       path: '/memory',
       label: 'Memory',
       icon: <MemoryIcon />,

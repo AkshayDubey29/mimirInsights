@@ -3,8 +3,11 @@ package limits
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+
+	"math"
 
 	"github.com/akshaydubey29/mimirInsights/pkg/config"
 	"github.com/akshaydubey29/mimirInsights/pkg/k8s"
@@ -59,6 +62,40 @@ const (
 	RiskHigh     RiskLevel = "high"
 	RiskCritical RiskLevel = "critical"
 )
+
+// IntelligentLimitRecommendation represents a smart limit recommendation
+type IntelligentLimitRecommendation struct {
+	LimitName           string                 `json:"limit_name"`
+	Category            string                 `json:"category"`
+	CurrentValue        interface{}            `json:"current_value"`
+	RecommendedValue    interface{}            `json:"recommended_value"`
+	ObservedPeak        float64                `json:"observed_peak"`
+	AverageUsage        float64                `json:"average_usage"`
+	UsagePercentile95   float64                `json:"usage_percentile_95"`
+	UsagePercentile99   float64                `json:"usage_percentile_99"`
+	RiskLevel           string                 `json:"risk_level"`
+	Confidence          float64                `json:"confidence"`
+	Reason              string                 `json:"reason"`
+	Impact              string                 `json:"impact"`   // "high", "medium", "low"
+	Priority            string                 `json:"priority"` // "critical", "high", "medium", "low"
+	EstimatedSavings    map[string]interface{} `json:"estimated_savings"`
+	ImplementationSteps []string               `json:"implementation_steps"`
+	LastUpdated         time.Time              `json:"last_updated"`
+}
+
+// TenantIntelligentAnalysis represents comprehensive analysis for a tenant
+type TenantIntelligentAnalysis struct {
+	TenantName            string                           `json:"tenant_name"`
+	AnalysisTime          time.Time                        `json:"analysis_time"`
+	CurrentLimits         map[string]interface{}           `json:"current_limits"`
+	MissingLimits         []string                         `json:"missing_limits"`
+	Recommendations       []IntelligentLimitRecommendation `json:"recommendations"`
+	RiskScore             float64                          `json:"risk_score"`
+	ReliabilityScore      float64                          `json:"reliability_score"`
+	PerformanceScore      float64                          `json:"performance_score"`
+	CostOptimizationScore float64                          `json:"cost_optimization_score"`
+	Summary               map[string]interface{}           `json:"summary"`
+}
 
 // NewAnalyzer creates a new limits analyzer
 func NewAnalyzer(metricsClient *metrics.Client) *Analyzer {
@@ -120,6 +157,75 @@ func (a *Analyzer) AnalyzeTenantLimits(ctx context.Context, tenantName string) (
 	return limits, nil
 }
 
+// AnalyzeTenantIntelligently performs comprehensive analysis with metrics-based recommendations
+func (a *Analyzer) AnalyzeTenantIntelligently(ctx context.Context, tenantName string) (*TenantIntelligentAnalysis, error) {
+	logrus.Infof("🔍 [INTELLIGENT] Starting comprehensive analysis for tenant: %s", tenantName)
+
+	analysis := &TenantIntelligentAnalysis{
+		TenantName:      tenantName,
+		AnalysisTime:    time.Now(),
+		CurrentLimits:   make(map[string]interface{}),
+		MissingLimits:   []string{},
+		Recommendations: []IntelligentLimitRecommendation{},
+		Summary:         make(map[string]interface{}),
+	}
+
+	// Get current configuration
+	currentConfig, err := a.getCurrentTenantConfig(ctx, tenantName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current config: %w", err)
+	}
+	analysis.CurrentLimits = currentConfig
+
+	// Get comprehensive metrics analysis
+	metricsAnalysis, err := a.analyzeTenantMetrics(ctx, tenantName)
+	if err != nil {
+		logrus.Warnf("Failed to analyze metrics for %s: %v", tenantName, err)
+	}
+
+	// Analyze each limit type intelligently
+	limitTypes := a.getLimitTypes()
+	var recommendations []IntelligentLimitRecommendation
+	var missingLimits []string
+
+	for _, limitType := range limitTypes {
+		recommendation, err := a.analyzeLimitIntelligently(ctx, tenantName, limitType, currentConfig, metricsAnalysis)
+		if err != nil {
+			logrus.Warnf("Failed to analyze limit %s for %s: %v", limitType.Name, tenantName, err)
+			continue
+		}
+
+		if recommendation == nil {
+			// Limit is missing - this is important for reliability
+			missingLimits = append(missingLimits, limitType.Name)
+			// Create recommendation for missing limit
+			missingRecommendation := a.createMissingLimitRecommendation(limitType, metricsAnalysis)
+			if missingRecommendation != nil {
+				recommendations = append(recommendations, *missingRecommendation)
+			}
+		} else {
+			recommendations = append(recommendations, *recommendation)
+		}
+	}
+
+	analysis.Recommendations = recommendations
+	analysis.MissingLimits = missingLimits
+
+	// Calculate comprehensive scores
+	analysis.RiskScore = a.calculateIntelligentRiskScore(recommendations, missingLimits, metricsAnalysis)
+	analysis.ReliabilityScore = a.calculateReliabilityScore(recommendations, missingLimits)
+	analysis.PerformanceScore = a.calculatePerformanceScore(recommendations, metricsAnalysis)
+	analysis.CostOptimizationScore = a.calculateCostOptimizationScore(recommendations, metricsAnalysis)
+
+	// Generate comprehensive summary
+	analysis.Summary = a.generateIntelligentSummary(analysis, metricsAnalysis)
+
+	logrus.Infof("✅ [INTELLIGENT] Completed analysis for %s: %d recommendations, risk score: %.2f",
+		tenantName, len(recommendations), analysis.RiskScore)
+
+	return analysis, nil
+}
+
 // analyzeLimit analyzes a specific limit for a tenant
 func (a *Analyzer) analyzeLimit(ctx context.Context, tenantName string, limitType LimitType, currentConfig map[string]interface{}) (*LimitRecommendation, error) {
 	// Get current value
@@ -158,6 +264,62 @@ func (a *Analyzer) analyzeLimit(ctx context.Context, tenantName string, limitTyp
 	return recommendation, nil
 }
 
+// analyzeLimitIntelligently performs intelligent analysis of a specific limit
+func (a *Analyzer) analyzeLimitIntelligently(ctx context.Context, tenantName string, limitType LimitType, currentConfig map[string]interface{}, metricsAnalysis map[string]interface{}) (*IntelligentLimitRecommendation, error) {
+	// Get current value
+	currentValue := a.getCurrentLimitValue(limitType.Name, currentConfig)
+	if currentValue == nil {
+		return nil, nil // Limit is missing
+	}
+
+	// Analyze metrics for this limit
+	metricName := a.mapLimitToMetric(limitType.Name)
+	peakValue := a.getMetricValue(metricsAnalysis, metricName, "peak")
+	avgValue := a.getMetricValue(metricsAnalysis, metricName, "average")
+	p95Value := a.getMetricValue(metricsAnalysis, metricName, "p95")
+	p99Value := a.getMetricValue(metricsAnalysis, metricName, "p99")
+
+	// Calculate intelligent recommendation
+	recommendedValue := a.calculateIntelligentRecommendation(limitType, currentValue, peakValue, avgValue, p95Value, p99Value)
+
+	// Determine risk level and confidence
+	riskLevel, confidence := a.calculateIntelligentRiskLevel(limitType, currentValue, peakValue, avgValue, p95Value, p99Value)
+
+	// Generate intelligent reason
+	reason := a.generateIntelligentReason(limitType, currentValue, peakValue, avgValue, p95Value, p99Value, riskLevel)
+
+	// Calculate impact and priority
+	impact := a.calculateImpact(limitType, riskLevel, confidence)
+	priority := a.calculatePriority(limitType, impact, riskLevel)
+
+	// Generate implementation steps
+	implementationSteps := a.generateImplementationSteps(limitType, currentValue, recommendedValue)
+
+	// Calculate estimated savings
+	estimatedSavings := a.calculateEstimatedSavings(limitType, currentValue, recommendedValue, avgValue)
+
+	recommendation := &IntelligentLimitRecommendation{
+		LimitName:           limitType.Name,
+		Category:            limitType.Category,
+		CurrentValue:        currentValue,
+		RecommendedValue:    recommendedValue,
+		ObservedPeak:        peakValue,
+		AverageUsage:        avgValue,
+		UsagePercentile95:   p95Value,
+		UsagePercentile99:   p99Value,
+		RiskLevel:           riskLevel,
+		Confidence:          confidence,
+		Reason:              reason,
+		Impact:              impact,
+		Priority:            priority,
+		EstimatedSavings:    estimatedSavings,
+		ImplementationSteps: implementationSteps,
+		LastUpdated:         time.Now(),
+	}
+
+	return recommendation, nil
+}
+
 // getObservedPeak gets the observed peak value for a limit type
 func (a *Analyzer) getObservedPeak(ctx context.Context, tenantName string, limitType LimitType) (float64, error) {
 	// Get metrics for different time ranges
@@ -180,6 +342,39 @@ func (a *Analyzer) getObservedPeak(ctx context.Context, tenantName string, limit
 	}
 
 	return maxPeak, nil
+}
+
+// analyzeTenantMetrics performs comprehensive metrics analysis
+func (a *Analyzer) analyzeTenantMetrics(ctx context.Context, tenantName string) (map[string]interface{}, error) {
+	metricsAnalysis := make(map[string]interface{})
+
+	// Get metrics for different time ranges
+	timeRanges := metrics.GetStandardTimeRanges()
+
+	for rangeName, timeRange := range timeRanges {
+		// Get peak values (this method exists)
+		peakValues, err := a.metricsClient.GetPeakValues(ctx, tenantName, timeRange)
+		if err != nil {
+			logrus.Warnf("Failed to get peak values for %s in %s: %v", tenantName, rangeName, err)
+			continue
+		}
+
+		// For now, use peak values as average (we'll enhance this later)
+		avgValues := peakValues // Placeholder - we'll implement proper average calculation
+
+		// For now, use peak values as percentiles (we'll enhance this later)
+		p95Values := peakValues // Placeholder
+		p99Values := peakValues // Placeholder
+
+		metricsAnalysis[rangeName] = map[string]interface{}{
+			"peak":    peakValues,
+			"average": avgValues,
+			"p95":     p95Values,
+			"p99":     p99Values,
+		}
+	}
+
+	return metricsAnalysis, nil
 }
 
 // mapLimitToMetric maps a limit name to its corresponding metric
@@ -266,6 +461,27 @@ func (a *Analyzer) generateReason(limitType LimitType, currentValue, observedPea
 	default:
 		return "Unable to determine risk level."
 	}
+}
+
+// generateIntelligentReason generates detailed reasoning
+func (a *Analyzer) generateIntelligentReason(limitType LimitType, currentValue interface{}, peak, avg, p95, p99 float64, riskLevel string) string {
+	currentFloat := a.convertToFloat(currentValue)
+
+	reason := fmt.Sprintf("Limit '%s' (current: %.2f) shows ", limitType.Name, currentFloat)
+
+	if p99 > currentFloat*0.9 {
+		reason += fmt.Sprintf("99th percentile usage (%.2f) is dangerously close to limit. ", p99)
+	} else if p95 > currentFloat*0.8 {
+		reason += fmt.Sprintf("95th percentile usage (%.2f) indicates potential risk. ", p95)
+	} else if peak > currentFloat*0.7 {
+		reason += fmt.Sprintf("peak usage (%.2f) suggests monitoring needed. ", peak)
+	} else {
+		reason += fmt.Sprintf("usage patterns are healthy (peak: %.2f, avg: %.2f). ", peak, avg)
+	}
+
+	reason += fmt.Sprintf("Recommendation based on %s category analysis.", limitType.Category)
+
+	return reason
 }
 
 // calculateRiskScore calculates an overall risk score for the tenant
@@ -486,4 +702,326 @@ func (a *Analyzer) GetTenantLimitsSummary(ctx context.Context, tenantNames []str
 	}
 
 	return summary, nil
+}
+
+// createMissingLimitRecommendation creates recommendation for missing limits
+func (a *Analyzer) createMissingLimitRecommendation(limitType LimitType, metricsAnalysis map[string]interface{}) *IntelligentLimitRecommendation {
+	metricName := a.mapLimitToMetric(limitType.Name)
+	peakValue := a.getMetricValue(metricsAnalysis, metricName, "peak")
+	avgValue := a.getMetricValue(metricsAnalysis, metricName, "average")
+
+	// For missing limits, recommend based on observed usage with safety buffer
+	recommendedValue := peakValue * 1.5 // 50% safety buffer
+	if recommendedValue < limitType.DefaultValue {
+		recommendedValue = limitType.DefaultValue
+	}
+
+	reason := fmt.Sprintf("Limit '%s' is not configured. Based on observed peak usage of %.2f, recommend setting to %.2f for reliability.",
+		limitType.Name, peakValue, recommendedValue)
+
+	return &IntelligentLimitRecommendation{
+		LimitName:           limitType.Name,
+		Category:            limitType.Category,
+		CurrentValue:        nil,
+		RecommendedValue:    recommendedValue,
+		ObservedPeak:        peakValue,
+		AverageUsage:        avgValue,
+		UsagePercentile95:   0,
+		UsagePercentile99:   0,
+		RiskLevel:           "high",
+		Confidence:          0.8,
+		Reason:              reason,
+		Impact:              "high",
+		Priority:            "critical",
+		EstimatedSavings:    map[string]interface{}{"reliability_improvement": "high"},
+		ImplementationSteps: []string{"Add limit to runtime overrides", "Monitor for 24 hours", "Adjust based on usage"},
+		LastUpdated:         time.Now(),
+	}
+}
+
+// calculateIntelligentRecommendation calculates smart recommendation based on usage patterns
+func (a *Analyzer) calculateIntelligentRecommendation(limitType LimitType, currentValue interface{}, peak, avg, p95, p99 float64) interface{} {
+	// Different strategies based on limit category
+	switch limitType.Category {
+	case "ingestion":
+		// For ingestion limits, use 99th percentile + 20% buffer
+		return p99 * 1.2
+	case "query":
+		// For query limits, use 95th percentile + 30% buffer
+		return p95 * 1.3
+	case "memory":
+		// For memory limits, use peak + 25% buffer
+		return peak * 1.25
+	case "alertmanager":
+		// For alertmanager, use peak + 50% buffer for safety
+		return peak * 1.5
+	default:
+		// Default: use 95th percentile + 25% buffer
+		return p95 * 1.25
+	}
+}
+
+// calculateIntelligentRiskLevel calculates risk level with confidence
+func (a *Analyzer) calculateIntelligentRiskLevel(limitType LimitType, currentValue interface{}, peak, avg, p95, p99 float64) (string, float64) {
+	currentFloat := a.convertToFloat(currentValue)
+
+	// Calculate usage ratios
+	p95Ratio := p95 / currentFloat
+	p99Ratio := p99 / currentFloat
+
+	var riskLevel string
+	var confidence float64
+
+	// Determine risk level based on usage patterns
+	if p99Ratio > 0.9 {
+		riskLevel = "critical"
+		confidence = 0.95
+	} else if p95Ratio > 0.8 {
+		riskLevel = "high"
+		confidence = 0.85
+	} else if p95Ratio > 0.6 {
+		riskLevel = "medium"
+		confidence = 0.75
+	} else {
+		riskLevel = "low"
+		confidence = 0.65
+	}
+
+	return riskLevel, confidence
+}
+
+// calculateImpact determines the impact of the recommendation
+func (a *Analyzer) calculateImpact(limitType LimitType, riskLevel string, confidence float64) string {
+	if riskLevel == "critical" || limitType.Category == "ingestion" {
+		return "high"
+	} else if riskLevel == "high" || limitType.Category == "query" {
+		return "medium"
+	}
+	return "low"
+}
+
+// calculatePriority determines the priority for implementation
+func (a *Analyzer) calculatePriority(limitType LimitType, impact, riskLevel string) string {
+	if impact == "high" || riskLevel == "critical" {
+		return "critical"
+	} else if impact == "medium" || riskLevel == "high" {
+		return "high"
+	} else if impact == "low" && riskLevel == "medium" {
+		return "medium"
+	}
+	return "low"
+}
+
+// generateImplementationSteps provides actionable steps
+func (a *Analyzer) generateImplementationSteps(limitType LimitType, currentValue, recommendedValue interface{}) []string {
+	steps := []string{
+		fmt.Sprintf("Update %s limit in runtime overrides", limitType.Name),
+		"Deploy configuration change",
+		"Monitor metrics for 1 hour",
+		"Check for any errors or warnings",
+		"Monitor for 24 hours",
+		"Adjust if needed based on usage patterns",
+	}
+
+	if limitType.Category == "ingestion" {
+		steps = append([]string{"⚠️ Critical: Monitor ingestion rate closely"}, steps...)
+	}
+
+	return steps
+}
+
+// calculateEstimatedSavings estimates the benefits
+func (a *Analyzer) calculateEstimatedSavings(limitType LimitType, currentValue, recommendedValue interface{}, avgUsage float64) map[string]interface{} {
+	currentFloat := a.convertToFloat(currentValue)
+	recommendedFloat := a.convertToFloat(recommendedValue)
+
+	savings := map[string]interface{}{
+		"reliability_improvement": "medium",
+		"performance_impact":      "positive",
+		"cost_optimization":       "low",
+	}
+
+	if recommendedFloat < currentFloat {
+		savings["cost_optimization"] = "high"
+		savings["resource_savings"] = fmt.Sprintf("%.1f%%", (currentFloat-recommendedFloat)/currentFloat*100)
+	}
+
+	if avgUsage > currentFloat*0.8 {
+		savings["reliability_improvement"] = "high"
+	}
+
+	return savings
+}
+
+// Helper functions
+func (a *Analyzer) getMetricValue(metricsAnalysis map[string]interface{}, metricName, metricType string) float64 {
+	for _, timeRangeData := range metricsAnalysis {
+		if data, ok := timeRangeData.(map[string]interface{}); ok {
+			if metricData, ok := data[metricType].(map[string]float64); ok {
+				if value, exists := metricData[metricName]; exists {
+					return value
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func (a *Analyzer) convertToFloat(value interface{}) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case string:
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return 0
+}
+
+func (a *Analyzer) calculateIntelligentRiskScore(recommendations []IntelligentLimitRecommendation, missingLimits []string, metricsAnalysis map[string]interface{}) float64 {
+	// Enhanced risk calculation
+	riskScore := 0.0
+	totalWeight := 0.0
+
+	for _, rec := range recommendations {
+		weight := a.getRiskWeight(rec.RiskLevel)
+		riskScore += weight * (1 - rec.Confidence)
+		totalWeight += weight
+	}
+
+	// Add penalty for missing limits
+	missingPenalty := float64(len(missingLimits)) * 0.1
+	riskScore += missingPenalty
+
+	if totalWeight > 0 {
+		riskScore = riskScore / totalWeight
+	}
+
+	return math.Min(riskScore, 1.0)
+}
+
+func (a *Analyzer) calculateReliabilityScore(recommendations []IntelligentLimitRecommendation, missingLimits []string) float64 {
+	// Calculate reliability based on limit coverage and risk levels
+	totalLimits := len(recommendations) + len(missingLimits)
+	if totalLimits == 0 {
+		return 0.0
+	}
+
+	reliabilityScore := 1.0
+
+	// Penalty for missing limits
+	missingPenalty := float64(len(missingLimits)) / float64(totalLimits) * 0.5
+	reliabilityScore -= missingPenalty
+
+	// Penalty for high-risk limits
+	highRiskCount := 0
+	for _, rec := range recommendations {
+		if rec.RiskLevel == "critical" || rec.RiskLevel == "high" {
+			highRiskCount++
+		}
+	}
+
+	highRiskPenalty := float64(highRiskCount) / float64(totalLimits) * 0.3
+	reliabilityScore -= highRiskPenalty
+
+	return math.Max(reliabilityScore, 0.0)
+}
+
+func (a *Analyzer) calculatePerformanceScore(recommendations []IntelligentLimitRecommendation, metricsAnalysis map[string]interface{}) float64 {
+	// Calculate performance score based on limit efficiency
+	performanceScore := 1.0
+
+	for _, rec := range recommendations {
+		if rec.CurrentValue != nil {
+			currentFloat := a.convertToFloat(rec.CurrentValue)
+			if currentFloat > 0 {
+				usageRatio := rec.AverageUsage / currentFloat
+				if usageRatio > 0.8 {
+					performanceScore -= 0.1 // Penalty for high usage
+				} else if usageRatio < 0.2 {
+					performanceScore -= 0.05 // Small penalty for underutilization
+				}
+			}
+		}
+	}
+
+	return math.Max(performanceScore, 0.0)
+}
+
+func (a *Analyzer) calculateCostOptimizationScore(recommendations []IntelligentLimitRecommendation, metricsAnalysis map[string]interface{}) float64 {
+	// Calculate cost optimization potential
+	costScore := 1.0
+	optimizationOpportunities := 0
+
+	for _, rec := range recommendations {
+		if rec.CurrentValue != nil && rec.RecommendedValue != nil {
+			currentFloat := a.convertToFloat(rec.CurrentValue)
+			recommendedFloat := a.convertToFloat(rec.RecommendedValue)
+
+			if currentFloat > recommendedFloat*1.2 {
+				optimizationOpportunities++
+				costScore += 0.1 // Bonus for optimization opportunity
+			}
+		}
+	}
+
+	return math.Min(costScore, 1.0)
+}
+
+func (a *Analyzer) generateIntelligentSummary(analysis *TenantIntelligentAnalysis, metricsAnalysis map[string]interface{}) map[string]interface{} {
+	summary := map[string]interface{}{
+		"total_recommendations":           len(analysis.Recommendations),
+		"critical_recommendations":        0,
+		"high_priority_recommendations":   0,
+		"missing_limits":                  len(analysis.MissingLimits),
+		"reliability_issues":              0,
+		"performance_issues":              0,
+		"cost_optimization_opportunities": 0,
+		"next_actions":                    []string{},
+	}
+
+	// Count recommendations by priority
+	for _, rec := range analysis.Recommendations {
+		if rec.Priority == "critical" {
+			summary["critical_recommendations"] = summary["critical_recommendations"].(int) + 1
+		} else if rec.Priority == "high" {
+			summary["high_priority_recommendations"] = summary["high_priority_recommendations"].(int) + 1
+		}
+
+		if rec.RiskLevel == "critical" || rec.RiskLevel == "high" {
+			summary["reliability_issues"] = summary["reliability_issues"].(int) + 1
+		}
+
+		if rec.Impact == "high" {
+			summary["performance_issues"] = summary["performance_issues"].(int) + 1
+		}
+
+		if rec.EstimatedSavings["cost_optimization"] == "high" {
+			summary["cost_optimization_opportunities"] = summary["cost_optimization_opportunities"].(int) + 1
+		}
+	}
+
+	// Generate next actions
+	nextActions := []string{}
+	if summary["critical_recommendations"].(int) > 0 {
+		nextActions = append(nextActions, "🔴 Address critical limit recommendations immediately")
+	}
+	if summary["missing_limits"].(int) > 0 {
+		nextActions = append(nextActions, "⚠️ Configure missing limits for reliability")
+	}
+	if summary["cost_optimization_opportunities"].(int) > 0 {
+		nextActions = append(nextActions, "💰 Review cost optimization opportunities")
+	}
+	if len(nextActions) == 0 {
+		nextActions = append(nextActions, "✅ All limits are well-configured")
+	}
+
+	summary["next_actions"] = nextActions
+
+	return summary
 }
