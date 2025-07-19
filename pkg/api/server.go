@@ -519,6 +519,64 @@ func (s *Server) GetMetrics(c *gin.Context) {
 	promhttp.Handler().ServeHTTP(c.Writer, c.Request)
 }
 
+// GetDashboardMetrics returns dashboard metrics for the frontend
+func (s *Server) GetDashboardMetrics(c *gin.Context) {
+	start := time.Now()
+
+	// Get cached discovery data
+	discoveryResult := s.cacheManager.GetDiscoveryResult()
+	if discoveryResult == nil {
+		s.recordError(c, "cache_not_ready", start)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Cache not ready, please try again"})
+		return
+	}
+
+	// Calculate basic metrics from tenants data
+	var totalTenants, healthyTenants, warningTenants, criticalTenants int
+	var totalSeries, totalIngestionRate, totalQueryRate, averageErrorRate float64
+
+	if discoveryResult.TenantNamespaces != nil {
+		totalTenants = len(discoveryResult.TenantNamespaces)
+		for _, tenant := range discoveryResult.TenantNamespaces {
+			switch tenant.Status {
+			case "healthy":
+				healthyTenants++
+			case "warning":
+				warningTenants++
+			case "critical":
+				criticalTenants++
+			}
+		}
+	}
+
+	// Determine system health based on tenant statuses
+	var systemHealth string
+	if criticalTenants > 0 {
+		systemHealth = "critical"
+	} else if warningTenants > 0 {
+		systemHealth = "warning"
+	} else {
+		systemHealth = "healthy"
+	}
+
+	// Build dashboard metrics response
+	metrics := map[string]interface{}{
+		"totalTenants":       totalTenants,
+		"healthyTenants":     healthyTenants,
+		"warningTenants":     warningTenants,
+		"criticalTenants":    criticalTenants,
+		"totalSeries":        totalSeries,
+		"totalIngestionRate": totalIngestionRate,
+		"totalQueryRate":     totalQueryRate,
+		"averageErrorRate":   averageErrorRate,
+		"systemHealth":       systemHealth,
+		"lastUpdated":        time.Now().UTC(),
+	}
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, metrics)
+}
+
 // GetAuditLogs returns audit logs from actual cluster data
 func (s *Server) GetAuditLogs(c *gin.Context) {
 	start := time.Now()
