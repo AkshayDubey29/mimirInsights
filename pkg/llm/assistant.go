@@ -129,22 +129,25 @@ func NewAssistant() (*Assistant, error) {
 	default:
 		logrus.Warnf("Unknown LLM provider: %s, no LLM integration available", cfg.LLM.Provider)
 		return &Assistant{
-			client:  nil,
-			enabled: false,
+			config:        cfg,
+			metricsClient: nil,
+			llmClient:     nil,
 		}, nil
 	}
 
 	if err != nil {
 		logrus.Warnf("Failed to initialize LLM client: %v", err)
 		return &Assistant{
-			client:  nil,
-			enabled: false,
+			config:        cfg,
+			metricsClient: nil,
+			llmClient:     nil,
 		}, nil
 	}
 
 	return &Assistant{
-		client:  llmClient,
-		enabled: llmClient.IsEnabled(),
+		config:        cfg,
+		metricsClient: nil, // TODO: Initialize metrics client
+		llmClient:     llmClient,
 	}, nil
 }
 

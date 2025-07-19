@@ -1,34 +1,17 @@
 package llm
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/akshaydubey29/mimirInsights/pkg/config"
 	"github.com/sirupsen/logrus"
 )
 
-// LLMResponse represents a response from an LLM provider
-type LLMResponse struct {
-	Content      string        `json:"content"`
-	Model        string        `json:"model"`
-	TokensUsed   int           `json:"tokens_used"`
-	ResponseTime time.Duration `json:"response_time"`
-	Provider     string        `json:"provider"`
-}
-
-// LLMClient interface for different LLM providers
-type LLMClient interface {
-	GenerateResponse(ctx context.Context, prompt string, maxTokens int) (*LLMResponse, error)
-	IsEnabled() bool
-}
-
 // NewOpenAIClient creates a new OpenAI client
 func NewOpenAIClient() (LLMClient, error) {
 	cfg := config.Get()
 
-	if cfg.LLM.OpenAI.APIKey == "" {
+	if cfg.LLM.APIKey == "" {
 		return nil, fmt.Errorf("OpenAI API key not configured")
 	}
 
@@ -41,7 +24,7 @@ func NewOpenAIClient() (LLMClient, error) {
 func NewAnthropicClient() (LLMClient, error) {
 	cfg := config.Get()
 
-	if cfg.LLM.Anthropic.APIKey == "" {
+	if cfg.LLM.APIKey == "" {
 		return nil, fmt.Errorf("Anthropic API key not configured")
 	}
 
@@ -54,7 +37,7 @@ func NewAnthropicClient() (LLMClient, error) {
 func NewOllamaClient() (LLMClient, error) {
 	cfg := config.Get()
 
-	if cfg.LLM.Ollama.URL == "" {
+	if cfg.LLM.Endpoint == "" {
 		return nil, fmt.Errorf("Ollama URL not configured")
 	}
 
