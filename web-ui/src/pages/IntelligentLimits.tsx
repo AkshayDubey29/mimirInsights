@@ -36,7 +36,6 @@ import {
   Settings,
   Refresh,
   PriorityHigh,
-  PriorityMedium,
   PriorityLow,
 } from '@mui/icons-material';
 import { useIntelligentLimits } from '../api/useIntelligentLimits';
@@ -92,7 +91,7 @@ const IntelligentLimits: React.FC = () => {
       case 'high':
         return <PriorityHigh color="warning" />;
       case 'medium':
-        return <PriorityMedium color="info" />;
+        return <Info />;
       case 'low':
         return <PriorityLow color="success" />;
       default:
