@@ -59,6 +59,7 @@ func main() {
 		apiGroup.POST("/tenants", server.CreateTenant)
 		apiGroup.GET("/limits", server.GetLimits)
 		apiGroup.GET("/config", server.GetConfig)
+		apiGroup.GET("/configs", server.GetConfig) // Add configs endpoint for frontend compatibility
 		apiGroup.GET("/environment", server.GetEnvironment)
 		apiGroup.GET("/discovery", server.GetDiscoveryDetails)                           // Added new discovery details endpoint
 		apiGroup.GET("/discovery/comprehensive", server.GetComprehensiveTenantDiscovery) // Added comprehensive tenant discovery endpoint
@@ -77,6 +78,7 @@ func main() {
 		apiGroup.GET("/capacity", server.GetCapacityReport)
 		apiGroup.GET("/capacity/export", server.ExportCapacityReport)
 		apiGroup.GET("/capacity/trends", server.GetCapacityTrends)
+		apiGroup.GET("/reports", server.GetCapacityReport) // Add reports endpoint for frontend compatibility
 		apiGroup.POST("/llm/query", server.ProcessLLMQuery)
 		apiGroup.GET("/llm/capabilities", server.GetLLMCapabilities)
 		apiGroup.GET("/cache/status", server.GetCacheStatus)
