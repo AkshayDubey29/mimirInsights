@@ -29,6 +29,9 @@ const (
 	StrategySecretPatterns     TenantDiscoveryStrategy = "secret_patterns"
 	StrategyNetworkPolicies    TenantDiscoveryStrategy = "network_policies"
 	StrategyRBACBindings       TenantDiscoveryStrategy = "rbac_bindings"
+	StrategyMimirLimitsConfig  TenantDiscoveryStrategy = "mimir_limits_config"
+	StrategyMimirMetricsUsers  TenantDiscoveryStrategy = "mimir_metrics_users"
+	StrategyMimirRuntimeConfig TenantDiscoveryStrategy = "mimir_runtime_config"
 )
 
 // TenantDiscoveryResult represents the result of a single discovery strategy
@@ -195,6 +198,27 @@ func (m *MultiStrategyTenantDiscovery) DiscoverTenantsComprehensive(ctx context.
 		errors = append(errors, fmt.Sprintf("RBAC bindings discovery failed: %v", err))
 	} else {
 		results[StrategyRBACBindings] = result
+	}
+
+	// Strategy 12: Mimir Limits Configuration Discovery
+	if result, err := m.discoverByMimirLimitsConfig(ctx); err != nil {
+		errors = append(errors, fmt.Sprintf("Mimir limits config discovery failed: %v", err))
+	} else {
+		results[StrategyMimirLimitsConfig] = result
+	}
+
+	// Strategy 13: Mimir Metrics Users Discovery
+	if result, err := m.discoverByMimirMetricsUsers(ctx); err != nil {
+		errors = append(errors, fmt.Sprintf("Mimir metrics users discovery failed: %v", err))
+	} else {
+		results[StrategyMimirMetricsUsers] = result
+	}
+
+	// Strategy 14: Mimir Runtime Configuration Discovery
+	if result, err := m.discoverByMimirRuntimeConfig(ctx); err != nil {
+		errors = append(errors, fmt.Sprintf("Mimir runtime config discovery failed: %v", err))
+	} else {
+		results[StrategyMimirRuntimeConfig] = result
 	}
 
 	// Consolidate and deduplicate results
@@ -578,6 +602,107 @@ func (m *MultiStrategyTenantDiscovery) discoverByRBACBindings(ctx context.Contex
 	}, nil
 }
 
+// discoverByMimirLimitsConfig discovers tenants from Mimir limits configuration
+func (m *MultiStrategyTenantDiscovery) discoverByMimirLimitsConfig(ctx context.Context) (*TenantDiscoveryResult, error) {
+	start := time.Now()
+	logrus.Info("🔍 Strategy 12: Discovering tenants by Mimir limits configuration")
+
+	tenants := []TenantInfo{}
+	errors := []string{}
+
+	// Look for Mimir limits configuration in ConfigMaps
+	configMaps, err := m.k8sClient.GetConfigMaps(ctx, "", metav1.ListOptions{})
+	if err != nil {
+		errors = append(errors, fmt.Sprintf("Failed to get ConfigMaps: %v", err))
+	} else {
+		for _, cm := range configMaps.Items {
+			tenantInfo := m.extractTenantFromMimirLimitsConfig(&cm)
+			if tenantInfo != nil {
+				tenants = append(tenants, *tenantInfo)
+			}
+		}
+	}
+
+	confidence := m.calculateStrategyConfidence(len(tenants), len(configMaps.Items), 0.9)
+
+	return &TenantDiscoveryResult{
+		Strategy:    StrategyMimirLimitsConfig,
+		Tenants:     tenants,
+		Confidence:  confidence,
+		Errors:      errors,
+		Duration:    time.Since(start),
+		LastUpdated: time.Now(),
+	}, nil
+}
+
+// discoverByMimirMetricsUsers discovers tenants from Mimir metrics users
+func (m *MultiStrategyTenantDiscovery) discoverByMimirMetricsUsers(ctx context.Context) (*TenantDiscoveryResult, error) {
+	start := time.Now()
+	logrus.Info("🔍 Strategy 13: Discovering tenants by Mimir metrics users")
+
+	tenants := []TenantInfo{}
+	errors := []string{}
+
+	// Query Mimir metrics for tenant users
+	// This would require querying Mimir's metrics API for user-specific metrics
+	// Example metrics to look for:
+	// - cortex_ingester_series_created_total{user="tenant1"}
+	// - cortex_querier_request_duration_seconds{user="tenant2"}
+	// - cortex_distributor_received_samples_total{user="tenant3"}
+
+	// For now, we'll implement a placeholder that would query Mimir API
+	logrus.Info("📊 Querying Mimir metrics for tenant users (placeholder)")
+
+	// In a real implementation, this would:
+	// 1. Query Mimir metrics API
+	// 2. Extract unique user/tenant values from metrics
+	// 3. Create virtual tenant entries for users without namespaces
+
+	confidence := m.calculateStrategyConfidence(len(tenants), 0, 0.95)
+
+	return &TenantDiscoveryResult{
+		Strategy:    StrategyMimirMetricsUsers,
+		Tenants:     tenants,
+		Confidence:  confidence,
+		Errors:      errors,
+		Duration:    time.Since(start),
+		LastUpdated: time.Now(),
+	}, nil
+}
+
+// discoverByMimirRuntimeConfig discovers tenants from Mimir runtime configuration
+func (m *MultiStrategyTenantDiscovery) discoverByMimirRuntimeConfig(ctx context.Context) (*TenantDiscoveryResult, error) {
+	start := time.Now()
+	logrus.Info("🔍 Strategy 14: Discovering tenants by Mimir runtime configuration")
+
+	tenants := []TenantInfo{}
+	errors := []string{}
+
+	// Look for Mimir runtime configuration
+	configMaps, err := m.k8sClient.GetConfigMaps(ctx, "", metav1.ListOptions{})
+	if err != nil {
+		errors = append(errors, fmt.Sprintf("Failed to get ConfigMaps: %v", err))
+	} else {
+		for _, cm := range configMaps.Items {
+			tenantInfo := m.extractTenantFromMimirRuntimeConfig(&cm)
+			if tenantInfo != nil {
+				tenants = append(tenants, *tenantInfo)
+			}
+		}
+	}
+
+	confidence := m.calculateStrategyConfidence(len(tenants), len(configMaps.Items), 0.85)
+
+	return &TenantDiscoveryResult{
+		Strategy:    StrategyMimirRuntimeConfig,
+		Tenants:     tenants,
+		Confidence:  confidence,
+		Errors:      errors,
+		Duration:    time.Since(start),
+		LastUpdated: time.Now(),
+	}, nil
+}
+
 // Helper methods for resource analysis
 func (m *MultiStrategyTenantDiscovery) extractTenantFromNamespaceLabels(ns *corev1.Namespace, patterns []string) *TenantInfo {
 	// Check if namespace matches tenant patterns
@@ -807,6 +932,83 @@ func (m *MultiStrategyTenantDiscovery) extractTenantFromPodLabels(pod *corev1.Po
 	return nil
 }
 
+func (m *MultiStrategyTenantDiscovery) extractTenantFromMimirLimitsConfig(cm *corev1.ConfigMap) *TenantInfo {
+	// Look for Mimir limits configuration patterns
+	limitsConfigPatterns := []string{
+		"limits",
+		"overrides",
+		"runtime_config",
+		"tenant_limits",
+		"user_limits",
+	}
+
+	for _, pattern := range limitsConfigPatterns {
+		if strings.Contains(strings.ToLower(cm.Name), pattern) {
+			// Extract tenant information from limits configuration
+			for key, value := range cm.Data {
+				if tenantName := m.extractTenantFromLimitsConfig(key, value); tenantName != "" {
+					tenantInfo := &TenantInfo{
+						Name:             tenantName,
+						Namespace:        cm.Namespace,
+						OrgID:            tenantName,
+						Source:           StrategyMimirLimitsConfig,
+						Confidence:       0.9,
+						Labels:           cm.Labels,
+						Annotations:      cm.Annotations,
+						LastSeen:         time.Now(),
+						DiscoveryMethods: []string{fmt.Sprintf("mimir_limits_%s", pattern)},
+					}
+
+					logrus.Infof("🔍 Discovered virtual tenant from Mimir limits config: %s (config: %s)",
+						tenantInfo.Name, cm.Name)
+
+					return tenantInfo
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (m *MultiStrategyTenantDiscovery) extractTenantFromMimirRuntimeConfig(cm *corev1.ConfigMap) *TenantInfo {
+	// Look for Mimir runtime configuration patterns
+	runtimeConfigPatterns := []string{
+		"runtime",
+		"overrides",
+		"tenant_config",
+		"user_config",
+	}
+
+	for _, pattern := range runtimeConfigPatterns {
+		if strings.Contains(strings.ToLower(cm.Name), pattern) {
+			// Extract tenant information from runtime configuration
+			for key, value := range cm.Data {
+				if tenantName := m.extractTenantFromRuntimeConfig(key, value); tenantName != "" {
+					tenantInfo := &TenantInfo{
+						Name:             tenantName,
+						Namespace:        cm.Namespace,
+						OrgID:            tenantName,
+						Source:           StrategyMimirRuntimeConfig,
+						Confidence:       0.85,
+						Labels:           cm.Labels,
+						Annotations:      cm.Annotations,
+						LastSeen:         time.Now(),
+						DiscoveryMethods: []string{fmt.Sprintf("mimir_runtime_%s", pattern)},
+					}
+
+					logrus.Infof("🔍 Discovered virtual tenant from Mimir runtime config: %s (config: %s)",
+						tenantInfo.Name, cm.Name)
+
+					return tenantInfo
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // Utility methods for pattern matching and extraction
 func (m *MultiStrategyTenantDiscovery) matchNamespacePattern(namespace, pattern string) (bool, string) {
 	re := regexp.MustCompile(pattern)
@@ -855,6 +1057,58 @@ func (m *MultiStrategyTenantDiscovery) extractTenantFromServiceName(serviceName 
 	for _, pattern := range servicePatterns {
 		re := regexp.MustCompile(pattern)
 		matches := re.FindStringSubmatch(serviceName)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+	}
+
+	return ""
+}
+
+func (m *MultiStrategyTenantDiscovery) extractTenantFromLimitsConfig(key, value string) string {
+	// Extract tenant names from Mimir limits configuration
+	// Look for patterns like:
+	// - "tenant1": { "max_series_per_user": 1000000 }
+	// - "user_limits": { "tenant2": { "max_series_per_user": 500000 } }
+	// - "overrides": { "tenant3": { "max_series_per_user": 2000000 } }
+
+	limitsPatterns := []string{
+		`"(\w+)"\s*:\s*\{`,     // "tenant1": {
+		`user_limits.*"(\w+)"`, // user_limits: { "tenant1": { ... } }
+		`overrides.*"(\w+)"`,   // overrides: { "tenant1": { ... } }
+		`limits.*"(\w+)"`,      // limits: { "tenant1": { ... } }
+		`tenant.*"(\w+)"`,      // tenant: { "tenant1": { ... } }
+	}
+
+	for _, pattern := range limitsPatterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(value)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+	}
+
+	return ""
+}
+
+func (m *MultiStrategyTenantDiscovery) extractTenantFromRuntimeConfig(key, value string) string {
+	// Extract tenant names from Mimir runtime configuration
+	// Look for patterns like:
+	// - "tenant1": { "max_series_per_user": 1000000 }
+	// - "runtime_config": { "tenant2": { "max_series_per_user": 500000 } }
+	// - "overrides": { "tenant3": { "max_series_per_user": 2000000 } }
+
+	runtimePatterns := []string{
+		`"(\w+)"\s*:\s*\{`,        // "tenant1": {
+		`runtime_config.*"(\w+)"`, // runtime_config: { "tenant1": { ... } }
+		`overrides.*"(\w+)"`,      // overrides: { "tenant1": { ... } }
+		`tenant.*"(\w+)"`,         // tenant: { "tenant1": { ... } }
+		`user.*"(\w+)"`,           // user: { "tenant1": { ... } }
+	}
+
+	for _, pattern := range runtimePatterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(value)
 		if len(matches) > 1 {
 			return matches[1]
 		}
@@ -937,7 +1191,13 @@ func (m *MultiStrategyTenantDiscovery) consolidateTenantResults(results map[Tena
 	// Process results from all strategies
 	for strategy, result := range results {
 		for _, tenant := range result.Tenants {
-			key := fmt.Sprintf("%s:%s", tenant.Namespace, tenant.Name)
+			// For virtual tenants (those without dedicated namespaces), use a different key
+			var key string
+			if tenant.Namespace == "" || tenant.Namespace == "virtual" {
+				key = fmt.Sprintf("virtual:%s", tenant.Name)
+			} else {
+				key = fmt.Sprintf("%s:%s", tenant.Namespace, tenant.Name)
+			}
 
 			if existingTenant, exists := tenantMap[key]; exists {
 				// Merge tenant information from multiple strategies
@@ -956,9 +1216,23 @@ func (m *MultiStrategyTenantDiscovery) consolidateTenantResults(results map[Tena
 				for k, v := range tenant.Annotations {
 					existingTenant.Annotations[k] = v
 				}
+
+				// If this is a virtual tenant discovery, mark it as such
+				if strategy == StrategyMimirLimitsConfig || strategy == StrategyMimirMetricsUsers || strategy == StrategyMimirRuntimeConfig {
+					existingTenant.Namespace = "virtual"
+					existingTenant.Labels["tenant_type"] = "virtual"
+					existingTenant.Annotations["discovery_source"] = "mimir_configuration"
+				}
 			} else {
 				// Create new tenant entry
 				tenantMap[key] = &tenant
+
+				// Mark virtual tenants appropriately
+				if strategy == StrategyMimirLimitsConfig || strategy == StrategyMimirMetricsUsers || strategy == StrategyMimirRuntimeConfig {
+					tenantMap[key].Namespace = "virtual"
+					tenantMap[key].Labels["tenant_type"] = "virtual"
+					tenantMap[key].Annotations["discovery_source"] = "mimir_configuration"
+				}
 			}
 		}
 	}
@@ -969,7 +1243,19 @@ func (m *MultiStrategyTenantDiscovery) consolidateTenantResults(results map[Tena
 		consolidatedTenants = append(consolidatedTenants, *tenant)
 	}
 
+	// Log summary of tenant types
+	virtualCount := 0
+	namespaceCount := 0
+	for _, tenant := range consolidatedTenants {
+		if tenant.Namespace == "virtual" {
+			virtualCount++
+		} else {
+			namespaceCount++
+		}
+	}
+
 	logrus.Infof("📊 Consolidated %d unique tenants from %d strategies", len(consolidatedTenants), len(results))
+	logrus.Infof("🏢 Tenant breakdown: %d namespace-based, %d virtual (Mimir-only)", namespaceCount, virtualCount)
 
 	return consolidatedTenants
 }
