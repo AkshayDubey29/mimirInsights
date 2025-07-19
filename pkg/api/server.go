@@ -1113,6 +1113,31 @@ func (s *Server) ForceCacheRefresh(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetComprehensiveTenantDiscovery returns comprehensive tenant discovery using multiple strategies
+func (s *Server) GetComprehensiveTenantDiscovery(c *gin.Context) {
+	start := time.Now()
+	ctx := c.Request.Context()
+
+	logrus.Infof("🔍 [API] GetComprehensiveTenantDiscovery called from %s", c.ClientIP())
+	logrus.Infof("📋 [API] GetComprehensiveTenantDiscovery: Starting multi-strategy tenant discovery")
+
+	// Perform comprehensive tenant discovery
+	result, err := s.discoveryEngine.DiscoverTenantsComprehensive(ctx)
+	if err != nil {
+		logrus.Errorf("❌ [API] GetComprehensiveTenantDiscovery: Failed to discover tenants: %v", err)
+		s.recordError(c, "discovery_error", start)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logrus.Infof("✅ [API] GetComprehensiveTenantDiscovery: Discovery completed successfully")
+	logrus.Infof("📊 [API] GetComprehensiveTenantDiscovery: Found %d tenants using %d strategies",
+		len(result.ConsolidatedTenants), len(result.Strategies))
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, result)
+}
+
 // GetDiscoveryDetails returns comprehensive discovery information
 func (s *Server) GetDiscoveryDetails(c *gin.Context) {
 	start := time.Now()

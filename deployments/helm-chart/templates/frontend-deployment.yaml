@@ -55,6 +55,14 @@ spec:
               mountPath: /usr/share/nginx/html/config/config.js
               subPath: config.js
               readOnly: true
+            - name: frontend-config-root
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+              readOnly: true
+            - name: frontend-config-dynamic
+              mountPath: /usr/share/nginx/html/dynamic-config.js
+              subPath: config.js
+              readOnly: true
             - name: nginx-tmp
               mountPath: /tmp
             - name: nginx-cache
@@ -73,6 +81,12 @@ spec:
           {{- end }}
       volumes:
         - name: frontend-config
+          configMap:
+            name: {{ include "mimir-insights.fullname" . }}-frontend-config
+        - name: frontend-config-root
+          configMap:
+            name: {{ include "mimir-insights.fullname" . }}-frontend-config
+        - name: frontend-config-dynamic
           configMap:
             name: {{ include "mimir-insights.fullname" . }}-frontend-config
         - name: nginx-tmp

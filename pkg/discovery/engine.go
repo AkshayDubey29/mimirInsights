@@ -22,6 +22,8 @@ type Engine struct {
 	environmentDetector *EnvironmentDetector
 	// Compiled regex patterns for performance
 	compiledPatterns *CompiledPatterns
+	// Multi-strategy tenant discovery
+	multiStrategyDiscovery *MultiStrategyTenantDiscovery
 }
 
 // CompiledPatterns holds pre-compiled regex patterns for efficient matching
@@ -156,6 +158,9 @@ func NewEngine() *Engine {
 
 	// Compile regex patterns for performance
 	engine.compilePatterns()
+
+	// Initialize multi-strategy tenant discovery
+	engine.multiStrategyDiscovery = NewMultiStrategyTenantDiscovery(engine)
 
 	return engine
 }
@@ -1713,4 +1718,15 @@ func (e *Engine) GetAutoDiscoveredMetrics(ctx context.Context) ([]string, error)
 	}
 
 	return e.autoDiscoverMetricsEndpoints(ctx, namespace)
+}
+
+// DiscoverTenantsComprehensive performs comprehensive tenant discovery using multiple strategies
+func (e *Engine) DiscoverTenantsComprehensive(ctx context.Context) (*ComprehensiveTenantDiscoveryResult, error) {
+	logrus.Info("🔍 Starting comprehensive tenant discovery using multiple strategies")
+
+	if e.multiStrategyDiscovery == nil {
+		return nil, fmt.Errorf("multi-strategy discovery not initialized")
+	}
+
+	return e.multiStrategyDiscovery.DiscoverTenantsComprehensive(ctx)
 }
