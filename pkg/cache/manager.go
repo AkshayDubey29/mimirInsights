@@ -31,6 +31,9 @@ type Manager struct {
 	// Discovery cache TTL settings
 	tenantCacheTTL time.Duration
 	mimirCacheTTL  time.Duration
+
+	// Memory management
+	memoryManager *MemoryManager
 }
 
 // Cache holds all cached data
@@ -74,7 +77,7 @@ type TenantMetricsData struct {
 
 // NewManager creates a new cache manager
 func NewManager(discoveryEngine *discovery.Engine, metricsClient *metrics.Client, limitsAnalyzer *limits.Analyzer) *Manager {
-	return &Manager{
+	manager := &Manager{
 		discoveryEngine:    discoveryEngine,
 		metricsClient:      metricsClient,
 		limitsAnalyzer:     limitsAnalyzer,
@@ -84,6 +87,14 @@ func NewManager(discoveryEngine *discovery.Engine, metricsClient *metrics.Client
 		tenantCacheTTL:     5 * time.Minute,  // 5 minutes TTL for tenant discovery
 		mimirCacheTTL:      10 * time.Minute, // 10 minutes TTL for Mimir discovery
 	}
+
+	// Initialize memory manager
+	manager.memoryManager = NewMemoryManager()
+
+	// Start memory monitoring
+	manager.memoryManager.StartMemoryMonitoring()
+
+	return manager
 }
 
 // Start begins the background data collection
@@ -364,6 +375,9 @@ func (m *Manager) GetCacheStatus() map[string]interface{} {
 	m.cacheLock.RLock()
 	defer m.cacheLock.RUnlock()
 
+	// Get memory statistics
+	memoryStats := m.memoryManager.GetMemoryStats()
+
 	return map[string]interface{}{
 		"general_cache": map[string]interface{}{
 			"last_updated":        m.cache.LastUpdated,
@@ -389,6 +403,25 @@ func (m *Manager) GetCacheStatus() map[string]interface{} {
 			"is_valid":        m.isMimirCacheValid(),
 			"cache_age":       time.Since(m.cache.MimirCacheLastUpdated),
 			"component_count": m.getMimirDiscoveryCount(),
+		},
+		"memory_management": map[string]interface{}{
+			"current_memory_bytes":  memoryStats.CurrentMemoryBytes,
+			"max_memory_bytes":      memoryStats.MaxMemoryBytes,
+			"memory_usage_percent":  memoryStats.MemoryUsagePercent,
+			"peak_memory_bytes":     memoryStats.PeakMemoryBytes,
+			"cache_item_count":      memoryStats.CacheItemCount,
+			"max_cache_size":        memoryStats.MaxCacheSize,
+			"tenant_cache_count":    memoryStats.TenantCacheCount,
+			"max_tenant_cache_size": memoryStats.MaxTenantCacheSize,
+			"mimir_cache_count":     memoryStats.MimirCacheCount,
+			"max_mimir_cache_size":  memoryStats.MaxMimirCacheSize,
+			"eviction_count":        memoryStats.EvictionCount,
+			"memory_warnings":       memoryStats.MemoryWarnings,
+			"last_eviction":         memoryStats.LastEviction,
+			"last_memory_check":     memoryStats.LastMemoryCheck,
+			"eviction_policy":       memoryStats.EvictionPolicy,
+			"eviction_threshold":    memoryStats.EvictionThreshold,
+			"memory_threshold":      memoryStats.MemoryThreshold,
 		},
 	}
 }
@@ -524,13 +557,35 @@ func (m *Manager) refreshTenantDiscovery(ctx context.Context) (*discovery.Compre
 		return nil, err
 	}
 
+	// Estimate memory size
+	estimatedSize := EstimateItemSize(result)
+
+	// Check if we can add this item
+	if canAdd, err := m.memoryManager.CanAddItem("tenant", estimatedSize); !canAdd {
+		logrus.Warnf("⚠️ Cannot add tenant discovery to cache: %v", err)
+		// Still return the result, but don't cache it
+		return result, nil
+	}
+
 	// Update cache
 	m.cacheLock.Lock()
+
+	// Remove old item if exists
+	if m.cache.TenantDiscoveryCache != nil {
+		oldSize := EstimateItemSize(m.cache.TenantDiscoveryCache)
+		m.memoryManager.RemoveItem("tenant", oldSize)
+	}
+
 	m.cache.TenantDiscoveryCache = result
 	m.cache.TenantCacheLastUpdated = time.Now()
+
+	// Add new item to memory tracking
+	m.memoryManager.AddItem("tenant", estimatedSize)
+
 	m.cacheLock.Unlock()
 
-	logrus.Infof("✅ Tenant discovery cache updated with %d tenants", len(result.ConsolidatedTenants))
+	logrus.Infof("✅ Tenant discovery cache updated with %d tenants (size: %d bytes)",
+		len(result.ConsolidatedTenants), estimatedSize)
 	return result, nil
 }
 
@@ -542,13 +597,35 @@ func (m *Manager) refreshMimirDiscovery(ctx context.Context) (*discovery.Compreh
 		return nil, err
 	}
 
+	// Estimate memory size
+	estimatedSize := EstimateItemSize(result)
+
+	// Check if we can add this item
+	if canAdd, err := m.memoryManager.CanAddItem("mimir", estimatedSize); !canAdd {
+		logrus.Warnf("⚠️ Cannot add Mimir discovery to cache: %v", err)
+		// Still return the result, but don't cache it
+		return result, nil
+	}
+
 	// Update cache
 	m.cacheLock.Lock()
+
+	// Remove old item if exists
+	if m.cache.MimirDiscoveryCache != nil {
+		oldSize := EstimateItemSize(m.cache.MimirDiscoveryCache)
+		m.memoryManager.RemoveItem("mimir", oldSize)
+	}
+
 	m.cache.MimirDiscoveryCache = result
 	m.cache.MimirCacheLastUpdated = time.Now()
+
+	// Add new item to memory tracking
+	m.memoryManager.AddItem("mimir", estimatedSize)
+
 	m.cacheLock.Unlock()
 
-	logrus.Infof("✅ Mimir discovery cache updated with %d components", len(result.ConsolidatedComponents))
+	logrus.Infof("✅ Mimir discovery cache updated with %d components (size: %d bytes)",
+		len(result.ConsolidatedComponents), estimatedSize)
 	return result, nil
 }
 
@@ -578,4 +655,31 @@ func (m *Manager) getMimirDiscoveryCount() int {
 		return 0
 	}
 	return len(m.cache.MimirDiscoveryCache.ConsolidatedComponents)
+}
+
+// Memory management methods
+
+// GetMemoryStats returns detailed memory statistics
+func (m *Manager) GetMemoryStats() MemoryStats {
+	return m.memoryManager.GetMemoryStats()
+}
+
+// SetMemoryLimits allows dynamic adjustment of memory limits
+func (m *Manager) SetMemoryLimits(maxMemoryBytes int64, maxCacheSize, maxTenantSize, maxMimirSize int) {
+	m.memoryManager.SetMemoryLimits(maxMemoryBytes, maxCacheSize, maxTenantSize, maxMimirSize)
+}
+
+// SetEvictionPolicy allows changing the eviction policy
+func (m *Manager) SetEvictionPolicy(policy EvictionPolicy, threshold float64) {
+	m.memoryManager.SetEvictionPolicy(policy, threshold)
+}
+
+// ForceMemoryEviction forces an immediate memory eviction cycle
+func (m *Manager) ForceMemoryEviction() error {
+	return m.memoryManager.ForceEviction()
+}
+
+// ResetMemoryStats resets memory statistics
+func (m *Manager) ResetMemoryStats() {
+	m.memoryManager.ResetStats()
 }

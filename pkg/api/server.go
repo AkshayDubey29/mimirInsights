@@ -1357,27 +1357,83 @@ func generateDiscoveryRecommendations(result *discovery.DiscoveryResult) []strin
 
 	// Check if tenant namespaces were found
 	if len(result.TenantNamespaces) == 0 {
-		recommendations = append(recommendations, "ℹ️ No tenant namespaces found - this is normal if no multi-tenant setup exists")
+		recommendations = append(recommendations, "⚠️ No tenant namespaces found - check tenant discovery patterns")
 	} else {
-		recommendations = append(recommendations, fmt.Sprintf("✅ Found %d tenant namespaces", len(result.TenantNamespaces)))
+		// Check tenant confidence scores
+		lowConfidenceCount := 0
+		for _, tenant := range result.TenantNamespaces {
+			if tenant.Validation.ConfidenceScore < 50 {
+				lowConfidenceCount++
+			}
+		}
+		if lowConfidenceCount > 0 {
+			recommendations = append(recommendations, fmt.Sprintf("⚠️ %d tenant namespaces have low confidence scores - review tenant patterns", lowConfidenceCount))
+		}
 	}
 
-	// Check environment
-	if result.Environment != nil {
-		if !result.Environment.IsProduction {
-			recommendations = append(recommendations, "ℹ️ Running in non-production environment")
-		}
-		if result.Environment.TotalNamespaces < 5 {
-			recommendations = append(recommendations, "ℹ️ Small cluster detected - limited namespace discovery")
-		}
-	}
-
-	// Check ConfigMaps
-	if len(result.ConfigMaps) == 0 {
-		recommendations = append(recommendations, "⚠️ No relevant ConfigMaps found - check discovery patterns")
-	} else {
-		recommendations = append(recommendations, fmt.Sprintf("✅ Found %d relevant ConfigMaps", len(result.ConfigMaps)))
+	// Check environment configuration
+	if result.Environment.MimirNamespace == "" {
+		recommendations = append(recommendations, "⚠️ Mimir namespace not detected - check cluster configuration")
 	}
 
 	return recommendations
+}
+
+// GetMemoryStats returns detailed memory statistics
+func (s *Server) GetMemoryStats(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] GetMemoryStats called from %s", c.ClientIP())
+
+	// Get memory statistics from cache manager
+	memoryStats := s.cacheManager.GetMemoryStats()
+
+	logrus.Infof("✅ [API] GetMemoryStats: Memory statistics retrieved successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, memoryStats)
+}
+
+// ForceMemoryEviction forces an immediate memory eviction cycle
+func (s *Server) ForceMemoryEviction(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] ForceMemoryEviction called from %s", c.ClientIP())
+	logrus.Info("🔄 [API] ForceMemoryEviction: Forcing memory eviction")
+
+	// Force memory eviction
+	err := s.cacheManager.ForceMemoryEviction()
+	if err != nil {
+		logrus.Errorf("❌ [API] ForceMemoryEviction: Failed to force eviction: %v", err)
+		s.recordError(c, "memory_eviction_error", start)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logrus.Infof("✅ [API] ForceMemoryEviction: Memory eviction completed successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Memory eviction completed successfully",
+		"timestamp": time.Now(),
+	})
+}
+
+// ResetMemoryStats resets memory statistics
+func (s *Server) ResetMemoryStats(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] ResetMemoryStats called from %s", c.ClientIP())
+	logrus.Info("🔄 [API] ResetMemoryStats: Resetting memory statistics")
+
+	// Reset memory statistics
+	s.cacheManager.ResetMemoryStats()
+
+	logrus.Infof("✅ [API] ResetMemoryStats: Memory statistics reset successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Memory statistics reset successfully",
+		"timestamp": time.Now(),
+	})
 }
