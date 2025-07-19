@@ -89,7 +89,7 @@ func NewServer(discoveryEngine *discovery.Engine, metricsClient *metrics.Client,
 		driftDetector:   drift.NewDetector(discoveryEngine.GetK8sClient()),
 		alloyTuner:      tuning.NewAlloyTuner(discoveryEngine.GetK8sClient()),
 		capacityPlanner: capacity.NewPlanner(metricsClient, limitsAnalyzer),
-		llmAssistant:    llm.NewAssistant(discoveryEngine.GetConfig(), metricsClient),
+		llmAssistant:    func() *llm.Assistant { assistant, _ := llm.NewAssistant(); return assistant }(),
 		healthChecker:   monitoring.NewHealthChecker(discoveryEngine.GetK8sClient(), healthConfig),
 		requestCounter:  requestCounter,
 		requestDuration: requestDuration,
@@ -522,7 +522,6 @@ func (s *Server) GetMetrics(c *gin.Context) {
 // GetAuditLogs returns audit logs from actual cluster data
 func (s *Server) GetAuditLogs(c *gin.Context) {
 	start := time.Now()
-	ctx := c.Request.Context()
 
 	// Get discovery result to find real tenants
 	discoveryResult := s.cacheManager.GetDiscoveryResult()
@@ -538,23 +537,23 @@ func (s *Server) GetAuditLogs(c *gin.Context) {
 	// Add audit entries for discovered tenants
 	for _, tenant := range discoveryResult.TenantNamespaces {
 		auditLogs = append(auditLogs, map[string]interface{}{
-			"timestamp":   tenant.DiscoveredAt,
+			"timestamp":   time.Now().UTC(),
 			"action":      "tenant_discovery",
 			"tenant":      tenant.Name,
 			"user":        "system",
-			"description": fmt.Sprintf("Discovered tenant %s in namespace %s", tenant.Name, tenant.Namespace),
+			"description": fmt.Sprintf("Discovered tenant %s", tenant.Name),
 		})
 	}
 
 	// Add audit entries for Mimir components
 	if discoveryResult.Environment != nil && discoveryResult.Environment.MimirComponents != nil {
-		for _, component := range discoveryResult.Environment.MimirComponents {
+		for _, componentName := range discoveryResult.Environment.MimirComponents {
 			auditLogs = append(auditLogs, map[string]interface{}{
-				"timestamp":   component.LastSeen,
+				"timestamp":   time.Now().UTC(),
 				"action":      "component_discovery",
 				"tenant":      "mimir-system",
 				"user":        "system",
-				"description": fmt.Sprintf("Discovered %s component %s in namespace %s", component.Type, component.Name, component.Namespace),
+				"description": fmt.Sprintf("Discovered Mimir component: %s", componentName),
 			})
 		}
 	}
