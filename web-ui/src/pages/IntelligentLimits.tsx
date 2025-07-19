@@ -174,8 +174,18 @@ const IntelligentLimits: React.FC = () => {
   }
 
   const tenantRecommendations = recommendationsData?.tenant_recommendations || [];
-  const overallSummary = recommendationsData?.overall_summary || {};
-  const averageScores = recommendationsData?.average_scores || {};
+  const overallSummary = recommendationsData?.overall_summary || {
+    critical_recommendations: 0,
+    high_priority_recommendations: 0,
+    missing_limits_total: 0,
+    cost_optimization_opportunities: 0
+  };
+  const averageScores = recommendationsData?.average_scores || {
+    risk_score: 0,
+    reliability_score: 0,
+    performance_score: 0,
+    cost_optimization_score: 0
+  };
 
   return (
     <Box sx={{ p: 3 }}>
