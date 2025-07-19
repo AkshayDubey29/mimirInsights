@@ -254,31 +254,50 @@ func (ad *AutoDiscovery) parseOverridesYAML(content string, discovered *Discover
 		return
 	}
 
-	// Extract overrides
-	if overridesSection, exists := overrides["overrides"]; exists {
-		if overridesMap, ok := overridesSection.(map[interface{}]interface{}); ok {
-			for tenantKey, tenantLimits := range overridesMap {
-				tenantID := fmt.Sprintf("%v", tenantKey)
+	// Extract tenant-specific overrides
+	if tenantOverrides, exists := overrides["overrides"]; exists {
+		if tenantMap, ok := tenantOverrides.(map[interface{}]interface{}); ok {
+			for tenantID, tenantConfig := range tenantMap {
+				if tenantStr, ok := tenantID.(string); ok {
+					if configMap, ok := tenantConfig.(map[interface{}]interface{}); ok {
+						// Convert to string map
+						limits := convertInterfaceMap(configMap)
 
-				if limitsMap, ok := tenantLimits.(map[interface{}]interface{}); ok {
-					tenantLimit := TenantLimit{
-						TenantID:    tenantID,
-						Limits:      convertInterfaceMap(limitsMap),
-						Source:      "runtime-override",
-						LastUpdated: time.Now(),
+						// Extract org ID if present
+						orgID := ad.extractOrgIDFromContent(content)
+						if orgID != "" {
+							tenantStr = orgID
+						}
+
+						discovered.TenantLimits[tenantStr] = TenantLimit{
+							TenantID:    tenantStr,
+							Limits:      limits,
+							Source:      "runtime-override",
+							LastUpdated: time.Now(),
+						}
+
+						logrus.Infof("Discovered %d limits for tenant %s from runtime overrides", len(limits), tenantStr)
 					}
-					discovered.TenantLimits[tenantID] = tenantLimit
 				}
 			}
 		}
 	}
 
-	// Extract global defaults
-	if limits, exists := overrides["limits"]; exists {
-		if limitsMap, ok := limits.(map[interface{}]interface{}); ok {
-			for key, value := range limitsMap {
-				discovered.GlobalLimits[fmt.Sprintf("%v", key)] = value
+	// Extract global limits
+	if globalLimits, exists := overrides["global"]; exists {
+		if globalMap, ok := globalLimits.(map[interface{}]interface{}); ok {
+			limits := convertInterfaceMap(globalMap)
+			for key, value := range limits {
+				discovered.GlobalLimits[key] = value
 			}
+			logrus.Infof("Discovered %d global limits from runtime overrides", len(limits))
+		}
+	}
+
+	// Extract limits from root level (common pattern)
+	for key, value := range overrides {
+		if ad.isLimitKey(key) {
+			discovered.GlobalLimits[key] = value
 		}
 	}
 }
@@ -481,15 +500,49 @@ func (ad *AutoDiscovery) extractOrgIDFromContent(content string) string {
 }
 
 func (ad *AutoDiscovery) isLimitKey(key string) bool {
+	// Comprehensive list of Mimir limit keywords
 	limitKeywords := []string{
-		"limit",
-		"max",
-		"rate",
-		"burst",
-		"series",
-		"ingestion",
-		"query",
-		"retention",
+		// Ingestion limits
+		"ingestion_rate", "ingestion_burst", "max_global_series", "max_series", "max_metadata",
+		"max_label", "max_samples", "max_exemplars", "max_ingestion_rate_spike",
+
+		// Query limits
+		"max_fetched_series", "max_fetched_chunks", "max_query", "max_concurrent",
+		"query_split", "query_shard", "query_ingesters", "query_result",
+
+		// Query frontend limits
+		"results_cache", "min_sharding", "shard_by_all", "max_outstanding",
+
+		// Alertmanager limits
+		"alertmanager_max", "alertmanager_max_config", "alertmanager_max_templates",
+
+		// Ruler limits
+		"ruler_max", "ruler_evaluation", "ruler_remote_write",
+
+		// Compactor/Retention limits
+		"retention_period", "retention_stream", "compactor_max", "compactor_max_compaction",
+
+		// Metadata & Exemplars
+		"max_exemplars_per_series", "max_exemplars_size", "max_metadata_size",
+
+		// Runtime limits
+		"enforce_metric", "creation_grace", "per_tenant_override", "allow_infinite",
+		"allow_ingester_idle",
+
+		// Store gateway limits
+		"store_gateway_max",
+
+		// Write path limits
+		"distributor_shard", "shard_ingest", "max_distributor",
+
+		// Feature toggles
+		"enable_enhanced", "enable_query", "enable_auto", "enable_alertmanager",
+		"enable_streaming",
+
+		// General limit patterns
+		"limit", "max", "rate", "burst", "series", "ingestion", "query", "retention",
+		"parallel", "concurrent", "timeout", "ttl", "size", "count", "bytes",
+		"alerts", "rules", "templates", "config", "overrides",
 	}
 
 	keyLower := strings.ToLower(key)

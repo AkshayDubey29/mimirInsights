@@ -330,76 +330,92 @@ func (a *Analyzer) getRiskScore(riskLevel string) float64 {
 // getLimitTypes returns all supported Mimir limit types
 func (a *Analyzer) getLimitTypes() []LimitType {
 	return []LimitType{
-		{
-			Name:         "max_global_series_per_user",
-			Description:  "Maximum number of active series per user",
-			DefaultValue: 5000000,
-			Unit:         "series",
-			Category:     "critical",
-		},
-		{
-			Name:         "max_label_names_per_series",
-			Description:  "Maximum number of label names per series",
-			DefaultValue: 30,
-			Unit:         "labels",
-			Category:     "important",
-		},
-		{
-			Name:         "max_label_value_length",
-			Description:  "Maximum length of label values",
-			DefaultValue: 2048,
-			Unit:         "bytes",
-			Category:     "important",
-		},
-		{
-			Name:         "ingestion_rate",
-			Description:  "Maximum ingestion rate per user",
-			DefaultValue: 10000,
-			Unit:         "samples/sec",
-			Category:     "critical",
-		},
-		{
-			Name:         "ingestion_burst_size",
-			Description:  "Maximum burst size for ingestion",
-			DefaultValue: 20000,
-			Unit:         "samples",
-			Category:     "important",
-		},
-		{
-			Name:         "max_global_series_per_metric",
-			Description:  "Maximum number of active series per metric",
-			DefaultValue: 100000,
-			Unit:         "series",
-			Category:     "important",
-		},
-		{
-			Name:         "max_global_exemplars_per_user",
-			Description:  "Maximum number of exemplars per user",
-			DefaultValue: 100000,
-			Unit:         "exemplars",
-			Category:     "regular",
-		},
-		{
-			Name:         "max_global_metadata_per_user",
-			Description:  "Maximum number of metadata entries per user",
-			DefaultValue: 100000,
-			Unit:         "entries",
-			Category:     "regular",
-		},
-		{
-			Name:         "max_global_metadata_per_metric",
-			Description:  "Maximum number of metadata entries per metric",
-			DefaultValue: 10000,
-			Unit:         "entries",
-			Category:     "regular",
-		},
-		{
-			Name:         "max_global_exemplars_per_metric",
-			Description:  "Maximum number of exemplars per metric",
-			DefaultValue: 10000,
-			Unit:         "exemplars",
-			Category:     "regular",
-		},
+		// 🔸 Ingestion Limits
+		{Name: "ingestion_rate", Description: "Maximum ingestion rate in samples per second", DefaultValue: 10000, Unit: "samples/sec", Category: "ingestion"},
+		{Name: "ingestion_burst_size", Description: "Maximum burst size for ingestion", DefaultValue: 20000, Unit: "samples", Category: "ingestion"},
+		{Name: "max_global_series_per_user", Description: "Maximum number of series per user globally", DefaultValue: 5000000, Unit: "series", Category: "ingestion"},
+		{Name: "max_series_per_user", Description: "Maximum number of series per user", DefaultValue: 1000000, Unit: "series", Category: "ingestion"},
+		{Name: "max_series_per_metric", Description: "Maximum number of series per metric", DefaultValue: 100000, Unit: "series", Category: "ingestion"},
+		{Name: "max_metadata_per_user", Description: "Maximum metadata entries per user", DefaultValue: 100000, Unit: "entries", Category: "ingestion"},
+		{Name: "max_label_name_length", Description: "Maximum length of label names", DefaultValue: 63, Unit: "characters", Category: "ingestion"},
+		{Name: "max_label_value_length", Description: "Maximum length of label values", DefaultValue: 2048, Unit: "characters", Category: "ingestion"},
+		{Name: "max_label_names_per_series", Description: "Maximum number of label names per series", DefaultValue: 30, Unit: "labels", Category: "ingestion"},
+		{Name: "max_label_value_per_metric", Description: "Maximum number of label values per metric", DefaultValue: 100, Unit: "values", Category: "ingestion"},
+		{Name: "max_samples_per_series", Description: "Maximum samples per series", DefaultValue: 1000000, Unit: "samples", Category: "ingestion"},
+		{Name: "max_ingestion_rate_spike", Description: "Maximum ingestion rate spike", DefaultValue: 50000, Unit: "samples/sec", Category: "ingestion"},
+		{Name: "max_exemplars_per_user", Description: "Maximum exemplars per user", DefaultValue: 100000, Unit: "exemplars", Category: "ingestion"},
+		{Name: "max_metadata_per_metric", Description: "Maximum metadata per metric", DefaultValue: 1000, Unit: "entries", Category: "ingestion"},
+
+		// 🔹 Query Limits
+		{Name: "max_fetched_series_per_query", Description: "Maximum series fetched per query", DefaultValue: 500000, Unit: "series", Category: "query"},
+		{Name: "max_fetched_chunks_per_query", Description: "Maximum chunks fetched per query", DefaultValue: 2000000, Unit: "chunks", Category: "query"},
+		{Name: "max_query_parallelism", Description: "Maximum query parallelism", DefaultValue: 32, Unit: "parallel", Category: "query"},
+		{Name: "max_query_series", Description: "Maximum series per query", DefaultValue: 100000, Unit: "series", Category: "query"},
+		{Name: "max_query_lookback", Description: "Maximum query lookback period", DefaultValue: 168, Unit: "hours", Category: "query"},
+		{Name: "max_query_length", Description: "Maximum query length", DefaultValue: 10000, Unit: "characters", Category: "query"},
+		{Name: "max_concurrent_queries", Description: "Maximum concurrent queries", DefaultValue: 20, Unit: "queries", Category: "query"},
+		{Name: "max_concurrent_requests", Description: "Maximum concurrent requests", DefaultValue: 100, Unit: "requests", Category: "query"},
+		{Name: "max_samples_per_query", Description: "Maximum samples per query", DefaultValue: 1000000, Unit: "samples", Category: "query"},
+		{Name: "max_query_time", Description: "Maximum query execution time", DefaultValue: 300, Unit: "seconds", Category: "query"},
+		{Name: "split_queries_by_interval", Description: "Split queries by interval", DefaultValue: 24, Unit: "hours", Category: "query"},
+		{Name: "query_ingesters_within", Description: "Query ingesters within time", DefaultValue: 12, Unit: "hours", Category: "query"},
+		{Name: "max_query_result_bytes", Description: "Maximum query result size", DefaultValue: 100000000, Unit: "bytes", Category: "query"},
+
+		// 🔸 Query Frontend / Cache / Scheduler Limits
+		{Name: "query_split_interval", Description: "Query split interval", DefaultValue: 24, Unit: "hours", Category: "query_frontend"},
+		{Name: "query_shard_size_limit", Description: "Query shard size limit", DefaultValue: 100000, Unit: "series", Category: "query_frontend"},
+		{Name: "results_cache_ttl", Description: "Results cache TTL", DefaultValue: 3600, Unit: "seconds", Category: "query_frontend"},
+		{Name: "min_sharding_lookback", Description: "Minimum sharding lookback", DefaultValue: 12, Unit: "hours", Category: "query_frontend"},
+		{Name: "shard_by_all_labels", Description: "Shard by all labels", DefaultValue: 1, Unit: "boolean", Category: "query_frontend"},
+		{Name: "max_outstanding_requests_per_tenant", Description: "Maximum outstanding requests per tenant", DefaultValue: 100, Unit: "requests", Category: "query_frontend"},
+
+		// 🔹 Alertmanager Limits
+		{Name: "alertmanager_max_alerts", Description: "Maximum alerts in Alertmanager", DefaultValue: 10000, Unit: "alerts", Category: "alertmanager"},
+		{Name: "alertmanager_max_config_size_bytes", Description: "Maximum Alertmanager config size", DefaultValue: 1048576, Unit: "bytes", Category: "alertmanager"},
+		{Name: "alertmanager_max_templates_count", Description: "Maximum Alertmanager templates", DefaultValue: 100, Unit: "templates", Category: "alertmanager"},
+
+		// 🔸 Ruler Limits
+		{Name: "ruler_max_rules_per_rule_group", Description: "Maximum rules per rule group", DefaultValue: 20, Unit: "rules", Category: "ruler"},
+		{Name: "ruler_max_rule_groups_per_tenant", Description: "Maximum rule groups per tenant", DefaultValue: 70, Unit: "groups", Category: "ruler"},
+		{Name: "ruler_max_total_rules_per_tenant", Description: "Maximum total rules per tenant", DefaultValue: 1000, Unit: "rules", Category: "ruler"},
+		{Name: "ruler_evaluation_interval", Description: "Ruler evaluation interval", DefaultValue: 60, Unit: "seconds", Category: "ruler"},
+		{Name: "ruler_remote_write_url", Description: "Ruler remote write URL", DefaultValue: 0, Unit: "url", Category: "ruler"},
+
+		// 🔹 Compactor / Retention Limits
+		{Name: "retention_period", Description: "Data retention period", DefaultValue: 744, Unit: "hours", Category: "compactor"},
+		{Name: "retention_stream", Description: "Retention stream configuration", DefaultValue: 0, Unit: "stream", Category: "compactor"},
+		{Name: "compactor_max_block_bytes", Description: "Maximum block size for compaction", DefaultValue: 1073741824, Unit: "bytes", Category: "compactor"},
+		{Name: "compactor_max_compaction_concurrency", Description: "Maximum compaction concurrency", DefaultValue: 1, Unit: "concurrent", Category: "compactor"},
+
+		// 🔸 Metadata & Exemplars
+		{Name: "max_exemplars_per_series", Description: "Maximum exemplars per series", DefaultValue: 100, Unit: "exemplars", Category: "metadata"},
+		{Name: "max_exemplars_size", Description: "Maximum exemplars size", DefaultValue: 1048576, Unit: "bytes", Category: "metadata"},
+		{Name: "max_metadata_size_per_metric", Description: "Maximum metadata size per metric", DefaultValue: 1048576, Unit: "bytes", Category: "metadata"},
+
+		// 🔹 Runtime / Miscellaneous Limits
+		{Name: "enforce_metric_name", Description: "Enforce metric name validation", DefaultValue: 1, Unit: "boolean", Category: "runtime"},
+		{Name: "creation_grace_period", Description: "Creation grace period", DefaultValue: 10, Unit: "minutes", Category: "runtime"},
+		{Name: "per_tenant_override_config_ttl", Description: "Per-tenant override config TTL", DefaultValue: 300, Unit: "seconds", Category: "runtime"},
+		{Name: "allow_infinite_retention", Description: "Allow infinite retention", DefaultValue: 0, Unit: "boolean", Category: "runtime"},
+		{Name: "allow_ingester_idle_timeout", Description: "Allow ingester idle timeout", DefaultValue: 0, Unit: "boolean", Category: "runtime"},
+
+		// 🔸 Store-Gateway / Block Fetching Limits
+		{Name: "store_gateway_max_series_per_query", Description: "Store gateway max series per query", DefaultValue: 100000, Unit: "series", Category: "store_gateway"},
+		{Name: "store_gateway_max_chunks_per_query", Description: "Store gateway max chunks per query", DefaultValue: 2000000, Unit: "chunks", Category: "store_gateway"},
+		{Name: "store_gateway_max_blocks_per_query", Description: "Store gateway max blocks per query", DefaultValue: 100, Unit: "blocks", Category: "store_gateway"},
+
+		// 🔹 Write Path Specific Limits
+		{Name: "distributor_shard_by_all_labels", Description: "Distributor shard by all labels", DefaultValue: 0, Unit: "boolean", Category: "write_path"},
+		{Name: "shard_ingest_by_label_name", Description: "Shard ingest by label name", DefaultValue: 0, Unit: "label", Category: "write_path"},
+		{Name: "max_distributor_concurrent_streams", Description: "Maximum distributor concurrent streams", DefaultValue: 1000, Unit: "streams", Category: "write_path"},
+		{Name: "max_distributor_concurrent_series", Description: "Maximum distributor concurrent series", DefaultValue: 10000, Unit: "series", Category: "write_path"},
+
+		// 🔸 Misc Feature Toggles (Boolean / Tuning)
+		{Name: "enable_enhanced_read_path", Description: "Enable enhanced read path", DefaultValue: 0, Unit: "boolean", Category: "features"},
+		{Name: "enable_query_stats", Description: "Enable query statistics", DefaultValue: 1, Unit: "boolean", Category: "features"},
+		{Name: "enable_auto_block_compaction", Description: "Enable auto block compaction", DefaultValue: 1, Unit: "boolean", Category: "features"},
+		{Name: "enable_alertmanager_multitenancy", Description: "Enable Alertmanager multitenancy", DefaultValue: 1, Unit: "boolean", Category: "features"},
+		{Name: "enable_streaming_ingestion", Description: "Enable streaming ingestion", DefaultValue: 0, Unit: "boolean", Category: "features"},
 	}
 }
 

@@ -321,12 +321,23 @@ func (s *Server) GetLimits(c *gin.Context) {
 
 	// Get discovery data for tenant information
 	discoveryResult := s.cacheManager.GetDiscoveryResult()
+
+	// Get auto-discovered limits for comprehensive data
+	discoveredLimits := s.cacheManager.GetAutoDiscoveredLimits()
+
 	if discoveryResult != nil {
 		// Add limits for discovered tenants
 		for _, tenant := range discoveryResult.TenantNamespaces {
+			// Get tenant-specific limits from auto-discovery
+			tenantLimitData := make(map[string]interface{})
+			if tenantLimit, exists := discoveredLimits.TenantLimits[tenant.Name]; exists {
+				tenantLimitData = tenantLimit.Limits
+			}
+
+			// Create comprehensive limit info
 			limitInfo := map[string]interface{}{
 				"tenant":            tenant.Name,
-				"cpuRequest":        0.5, // Default values
+				"cpuRequest":        0.5, // Default values for resource limits
 				"cpuLimit":          1.0,
 				"memoryRequest":     512,  // MB
 				"memoryLimit":       1024, // MB
@@ -335,6 +346,8 @@ func (s *Server) GetLimits(c *gin.Context) {
 				"status":            "configured",
 				"lastUpdated":       time.Now().UTC(),
 				"componentCount":    tenant.ComponentCount,
+				"mimirLimits":       tenantLimitData, // Real discovered Mimir limits
+				"limitCount":        len(tenantLimitData),
 			}
 			enhancedLimits = append(enhancedLimits, limitInfo)
 		}
@@ -342,6 +355,12 @@ func (s *Server) GetLimits(c *gin.Context) {
 		// Add limits for detected tenants from environment
 		if discoveryResult.Environment != nil && discoveryResult.Environment.DetectedTenants != nil {
 			for _, detectedTenant := range discoveryResult.Environment.DetectedTenants {
+				// Get tenant-specific limits from auto-discovery
+				tenantLimitData := make(map[string]interface{})
+				if tenantLimit, exists := discoveredLimits.TenantLimits[detectedTenant.Name]; exists {
+					tenantLimitData = tenantLimit.Limits
+				}
+
 				limitInfo := map[string]interface{}{
 					"tenant":            detectedTenant.Name,
 					"cpuRequest":        0.25,
@@ -354,6 +373,8 @@ func (s *Server) GetLimits(c *gin.Context) {
 					"lastUpdated":       detectedTenant.LastSeen,
 					"orgId":             detectedTenant.OrgID,
 					"hasRealData":       detectedTenant.HasRealData,
+					"mimirLimits":       tenantLimitData, // Real discovered Mimir limits
+					"limitCount":        len(tenantLimitData),
 				}
 				enhancedLimits = append(enhancedLimits, limitInfo)
 			}
@@ -365,15 +386,18 @@ func (s *Server) GetLimits(c *gin.Context) {
 		"total_tenants": len(enhancedLimits),
 		"timestamp":     time.Now().UTC(),
 		"auto_discovered": map[string]interface{}{
-			"global_limits_count":  len(autoDiscoveredLimits.GlobalLimits),
-			"tenant_limits_count":  len(autoDiscoveredLimits.TenantLimits),
-			"config_sources_count": len(autoDiscoveredLimits.ConfigSources),
-			"last_updated":         autoDiscoveredLimits.LastUpdated,
+			"global_limits_count":  len(discoveredLimits.GlobalLimits),
+			"tenant_limits_count":  len(discoveredLimits.TenantLimits),
+			"config_sources_count": len(discoveredLimits.ConfigSources),
+			"last_updated":         discoveredLimits.LastUpdated,
+			"global_limits":        discoveredLimits.GlobalLimits,  // Include actual global limits
+			"config_sources":       discoveredLimits.ConfigSources, // Include config sources
 		},
 		"summary": map[string]interface{}{
 			"configured_tenants": len(discoveryResult.TenantNamespaces),
 			"detected_tenants":   0,
 			"total_limits":       len(enhancedLimits),
+			"total_mimir_limits": len(discoveredLimits.GlobalLimits),
 		},
 	}
 
