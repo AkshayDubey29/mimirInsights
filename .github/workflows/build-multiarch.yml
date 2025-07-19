@@ -109,40 +109,45 @@ jobs:
         -ldflags="-w -s -X main.Version=${{ steps.timestamp.outputs.timestamp }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
         -o backend-arm64 ./cmd/server
 
+    - name: Create backend Dockerfile
+      run: |
+        cat > Dockerfile.backend.ci << 'EOF'
+        FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+        RUN apk add --no-cache git ca-certificates tzdata
+        WORKDIR /app
+        COPY go.mod go.sum ./
+        RUN go mod download && go mod tidy
+        COPY . .
+        ARG TARGETPLATFORM
+        ARG BUILDPLATFORM
+        ARG TARGETOS
+        ARG TARGETARCH
+        RUN echo "Building for $TARGETOS/$TARGETARCH" && \
+            CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
+            -a -installsuffix cgo \
+            -ldflags="-w -s -X main.Version=${{ steps.timestamp.outputs.timestamp }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
+            -o main ./cmd/server
+        
+        FROM alpine:3.19
+        RUN apk --no-cache add ca-certificates tzdata curl
+        RUN addgroup -g 1000 -S appgroup && \
+            adduser -u 1001 -S appuser -G appgroup
+        WORKDIR /app
+        COPY --from=builder /app/main .
+        COPY --from=builder /app/config ./config
+        RUN chown -R appuser:appgroup /app
+        USER appuser
+        EXPOSE 8080
+        HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+          CMD curl -f http://localhost:8080/api/health || exit 1
+        CMD ["./main"]
+        EOF
+
     - name: Build and push backend multi-arch image
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: |
-          FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
-          RUN apk add --no-cache git ca-certificates tzdata
-          WORKDIR /app
-          COPY go.mod go.sum ./
-          RUN go mod download && go mod tidy
-          COPY . .
-          ARG TARGETPLATFORM
-          ARG BUILDPLATFORM
-          ARG TARGETOS
-          ARG TARGETARCH
-          RUN echo "Building for $TARGETOS/$TARGETARCH" && \
-              CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
-              -a -installsuffix cgo \
-              -ldflags="-w -s -X main.Version=${{ steps.timestamp.outputs.timestamp }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')" \
-              -o main ./cmd/server
-          
-          FROM alpine:3.19
-          RUN apk --no-cache add ca-certificates tzdata curl
-          RUN addgroup -g 1000 -S appgroup && \
-              adduser -u 1001 -S appuser -G appgroup
-          WORKDIR /app
-          COPY --from=builder /app/main .
-          COPY --from=builder /app/config ./config
-          RUN chown -R appuser:appgroup /app
-          USER appuser
-          EXPOSE 8080
-          HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-            CMD curl -f http://localhost:8080/api/health || exit 1
-          CMD ["./main"]
+        file: Dockerfile.backend.ci
         platforms: linux/amd64,linux/arm64
         push: ${{ github.event_name != 'pull_request' }}
         tags: |
@@ -164,39 +169,44 @@ jobs:
           VCS_REF=${{ github.sha }}
           VERSION=${{ steps.timestamp.outputs.timestamp }}
 
+    - name: Create frontend Dockerfile
+      run: |
+        cat > Dockerfile.frontend.ci << 'EOF'
+        FROM nginx:alpine
+        ENV PRODUCTION_TAG=${{ steps.timestamp.outputs.timestamp }}
+        ENV BUILD_DATE=${{ env.BUILD_DATE }}
+        ENV VCS_REF=${{ github.sha }}
+        COPY web-ui/build /usr/share/nginx/html
+        COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
+        RUN mkdir -p /usr/share/nginx/html/config && \
+            echo 'window.CONFIG = {' > /usr/share/nginx/html/config/config.js && \
+            echo '  apiBaseUrl: "http://mimir-insights-backend:8080/api",' >> /usr/share/nginx/html/config/config.js && \
+            echo '  version: "PRODUCTION-${{ steps.timestamp.outputs.timestamp }}",' >> /usr/share/nginx/html/config/config.js && \
+            echo '  buildDate: "${{ env.BUILD_DATE }}",' >> /usr/share/nginx/html/config/config.js && \
+            echo '  gitCommit: "${{ github.sha }}"' >> /usr/share/nginx/html/config/config.js && \
+            echo '};' >> /usr/share/nginx/html/config/config.js && \
+            chmod 755 /usr/share/nginx/html/config
+        RUN echo '#!/bin/sh' > /start.sh && \
+            echo 'set -e' >> /start.sh && \
+            echo '' >> /start.sh && \
+            echo 'echo "🚀 Starting MimirInsights Frontend..."' >> /start.sh && \
+            echo 'echo "🛠 Version: PRODUCTION-${{ steps.timestamp.outputs.timestamp }}"' >> /start.sh && \
+            echo 'echo "🏗 Architecture: $(uname -m)"' >> /start.sh && \
+            echo 'echo "✅ Using web-ui/nginx.conf with API proxy support"' >> /start.sh && \
+            echo '' >> /start.sh && \
+            echo 'nginx -t' >> /start.sh && \
+            echo '' >> /start.sh && \
+            echo 'exec nginx -g "daemon off;"' >> /start.sh && \
+            chmod +x /start.sh
+        EXPOSE 80
+        ENTRYPOINT ["/start.sh"]
+        EOF
+
     - name: Build and push frontend multi-arch image
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: |
-          FROM nginx:alpine
-          ENV PRODUCTION_TAG=${{ steps.timestamp.outputs.timestamp }}
-          ENV BUILD_DATE=${{ env.BUILD_DATE }}
-          ENV VCS_REF=${{ github.sha }}
-          COPY web-ui/build /usr/share/nginx/html
-          COPY web-ui/nginx.conf /etc/nginx/conf.d/default.conf
-          RUN mkdir -p /usr/share/nginx/html/config && \
-              echo 'window.CONFIG = {' > /usr/share/nginx/html/config/config.js && \
-              echo '  apiBaseUrl: "http://mimir-insights-backend:8080/api",' >> /usr/share/nginx/html/config/config.js && \
-              echo '  version: "PRODUCTION-${{ steps.timestamp.outputs.timestamp }}",' >> /usr/share/nginx/html/config/config.js && \
-              echo '  buildDate: "${{ env.BUILD_DATE }}",' >> /usr/share/nginx/html/config/config.js && \
-              echo '  gitCommit: "${{ github.sha }}"' >> /usr/share/nginx/html/config/config.js && \
-              echo '};' >> /usr/share/nginx/html/config/config.js && \
-              chmod 755 /usr/share/nginx/html/config
-          RUN echo '#!/bin/sh' > /start.sh && \
-              echo 'set -e' >> /start.sh && \
-              echo '' >> /start.sh && \
-              echo 'echo "🚀 Starting MimirInsights Frontend..."' >> /start.sh && \
-              echo 'echo "🛠 Version: PRODUCTION-${{ steps.timestamp.outputs.timestamp }}"' >> /start.sh && \
-              echo 'echo "🏗 Architecture: $(uname -m)"' >> /start.sh && \
-              echo 'echo "✅ Using web-ui/nginx.conf with API proxy support"' >> /start.sh && \
-              echo '' >> /start.sh && \
-              echo 'nginx -t' >> /start.sh && \
-              echo '' >> /start.sh && \
-              echo 'exec nginx -g "daemon off;"' >> /start.sh && \
-              chmod +x /start.sh
-          EXPOSE 80
-          ENTRYPOINT ["/start.sh"]
+        file: Dockerfile.frontend.ci
         platforms: linux/amd64,linux/arm64
         push: ${{ github.event_name != 'pull_request' }}
         tags: |
