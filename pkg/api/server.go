@@ -145,7 +145,9 @@ func (s *Server) GetTenants(c *gin.Context) {
 	}
 
 	// Extract tenant information with detailed logging
-	tenants := make([]map[string]interface{}, 0, len(discoveryResult.TenantNamespaces))
+	tenants := make([]map[string]interface{}, 0)
+
+	// First, add discovered tenant namespaces
 	for i, tenant := range discoveryResult.TenantNamespaces {
 		logrus.Infof("📋 [API] GetTenants: Processing tenant %d/%d: %s", i+1, len(discoveryResult.TenantNamespaces), tenant.Name)
 
@@ -159,6 +161,38 @@ func (s *Server) GetTenants(c *gin.Context) {
 
 		logrus.Debugf("📋 [API] GetTenants: Tenant %s (status: %s, components: %d, labels: %v)",
 			tenant.Name, tenant.Status, tenant.ComponentCount, tenant.Labels)
+	}
+
+	// Also add detected tenants from environment if available
+	if discoveryResult.Environment != nil && discoveryResult.Environment.DetectedTenants != nil {
+		for i, detectedTenant := range discoveryResult.Environment.DetectedTenants {
+			logrus.Infof("📋 [API] GetTenants: Processing detected tenant %d/%d: %s", i+1, len(discoveryResult.Environment.DetectedTenants), detectedTenant.Name)
+
+			// Check if this tenant is already in the list
+			exists := false
+			for _, existingTenant := range tenants {
+				if existingTenant["name"] == detectedTenant.Name {
+					exists = true
+					break
+				}
+			}
+
+			if !exists {
+				tenantInfo := map[string]interface{}{
+					"name":          detectedTenant.Name,
+					"namespace":     detectedTenant.Namespace,
+					"status":        "active", // Default status for detected tenants
+					"org_id":        detectedTenant.OrgID,
+					"source":        detectedTenant.Source,
+					"last_seen":     detectedTenant.LastSeen,
+					"has_real_data": detectedTenant.HasRealData,
+				}
+				tenants = append(tenants, tenantInfo)
+
+				logrus.Debugf("📋 [API] GetTenants: Added detected tenant %s (namespace: %s, org_id: %s)",
+					detectedTenant.Name, detectedTenant.Namespace, detectedTenant.OrgID)
+			}
+		}
 	}
 
 	response := map[string]interface{}{
