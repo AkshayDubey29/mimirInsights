@@ -37,8 +37,8 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ .Values.frontend.image.repository }}{{ else }}{{ .Values.frontend.image.repository }}{{ end }}:{{ .Values.frontend.image.tag }}
-          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          image: {{ if kindIs "map" .Values.frontend.image }}{{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ .Values.frontend.image.repository }}{{ else }}{{ .Values.frontend.image.repository }}{{ end }}:{{ .Values.frontend.image.tag }}{{ else }}{{ .Values.frontend.image }}{{ end }}
+          imagePullPolicy: {{ if kindIs "map" .Values.frontend.image }}{{ .Values.frontend.image.pullPolicy | default "IfNotPresent" }}{{ else }}IfNotPresent{{ end }}
           {{- if .Values.frontend.env }}
           env:
             {{- range .Values.frontend.env }}

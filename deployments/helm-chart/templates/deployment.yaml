@@ -38,8 +38,8 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}{{ else }}{{ .Values.backend.image.repository }}{{ end }}:{{ .Values.backend.image.tag }}
-          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          image: {{ if kindIs "map" .Values.backend.image }}{{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}{{ else }}{{ .Values.backend.image.repository }}{{ end }}:{{ .Values.backend.image.tag }}{{ else }}{{ .Values.backend.image }}{{ end }}
+          imagePullPolicy: {{ if kindIs "map" .Values.backend.image }}{{ .Values.backend.image.pullPolicy | default "IfNotPresent" }}{{ else }}IfNotPresent{{ end }}
           ports:
             - name: http
               containerPort: 8080

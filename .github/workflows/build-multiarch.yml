@@ -2,7 +2,7 @@ name: Build and Push Multi-Architecture Docker Images
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
       - 'cmd/**'
       - 'pkg/**'
@@ -13,7 +13,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
       - 'cmd/**'
       - 'pkg/**'
@@ -248,5 +248,3 @@ jobs:
         echo "  --namespace mimir-insights \\"
         echo "  --values ./deployments/helm-chart/values-production-final.yaml \\"
         echo "  --wait"
-
- 
