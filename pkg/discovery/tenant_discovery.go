@@ -450,19 +450,19 @@ func (m *MultiStrategyTenantDiscovery) discoverByConfigMapPatterns(ctx context.C
 	tenants := []TenantInfo{}
 	errors := []string{}
 
-	configMaps, err := m.k8sClient.GetConfigMaps(ctx, "")
+	configMaps, err := m.k8sClient.GetConfigMaps(ctx, "", metav1.ListOptions{})
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("Failed to get ConfigMaps: %v", err))
 	} else {
-		for _, cm := range configMaps {
-			tenantInfo := m.extractTenantFromConfigMapPatterns(cm)
+		for _, cm := range configMaps.Items {
+			tenantInfo := m.extractTenantFromConfigMapPatterns(&cm)
 			if tenantInfo != nil {
 				tenants = append(tenants, *tenantInfo)
 			}
 		}
 	}
 
-	confidence := m.calculateStrategyConfidence(len(tenants), len(configMaps), 0.8)
+	confidence := m.calculateStrategyConfidence(len(tenants), len(configMaps.Items), 0.8)
 
 	return &TenantDiscoveryResult{
 		Strategy:    StrategyConfigMapPatterns,
@@ -506,19 +506,19 @@ func (m *MultiStrategyTenantDiscovery) discoverByPodLabels(ctx context.Context) 
 	tenants := []TenantInfo{}
 	errors := []string{}
 
-	pods, err := m.k8sClient.GetPods(ctx, "")
+	pods, err := m.k8sClient.GetPods(ctx, "", metav1.ListOptions{})
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("Failed to get pods: %v", err))
 	} else {
-		for _, pod := range pods {
-			tenantInfo := m.extractTenantFromPodLabels(pod)
+		for _, pod := range pods.Items {
+			tenantInfo := m.extractTenantFromPodLabels(&pod)
 			if tenantInfo != nil {
 				tenants = append(tenants, *tenantInfo)
 			}
 		}
 	}
 
-	confidence := m.calculateStrategyConfidence(len(tenants), len(pods), 0.7)
+	confidence := m.calculateStrategyConfidence(len(tenants), len(pods.Items), 0.7)
 
 	return &TenantDiscoveryResult{
 		Strategy:    StrategyPodLabels,
@@ -1119,13 +1119,13 @@ func (m *MultiStrategyTenantDiscovery) extractTenantFromRuntimeConfig(key, value
 
 // Resource getter methods (implementations)
 func (m *MultiStrategyTenantDiscovery) getPodsForLabelAnalysis(ctx context.Context) ([]interface{}, error) {
-	pods, err := m.k8sClient.GetPods(ctx, "")
+	pods, err := m.k8sClient.GetPods(ctx, "", metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	interfaces := make([]interface{}, len(pods))
-	for i, pod := range pods {
+	interfaces := make([]interface{}, len(pods.Items))
+	for i, pod := range pods.Items {
 		interfaces[i] = pod
 	}
 
@@ -1133,13 +1133,13 @@ func (m *MultiStrategyTenantDiscovery) getPodsForLabelAnalysis(ctx context.Conte
 }
 
 func (m *MultiStrategyTenantDiscovery) getServicesForLabelAnalysis(ctx context.Context) ([]interface{}, error) {
-	services, err := m.k8sClient.GetServices(ctx, "")
+	services, err := m.k8sClient.GetServices(ctx, "", metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	interfaces := make([]interface{}, len(services))
-	for i, svc := range services {
+	interfaces := make([]interface{}, len(services.Items))
+	for i, svc := range services.Items {
 		interfaces[i] = svc
 	}
 
@@ -1147,13 +1147,13 @@ func (m *MultiStrategyTenantDiscovery) getServicesForLabelAnalysis(ctx context.C
 }
 
 func (m *MultiStrategyTenantDiscovery) getDeploymentsForLabelAnalysis(ctx context.Context) ([]interface{}, error) {
-	deployments, err := m.k8sClient.GetDeployments(ctx, "")
+	deployments, err := m.k8sClient.GetDeployments(ctx, "", metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	interfaces := make([]interface{}, len(deployments))
-	for i, deployment := range deployments {
+	interfaces := make([]interface{}, len(deployments.Items))
+	for i, deployment := range deployments.Items {
 		interfaces[i] = deployment
 	}
 
@@ -1161,13 +1161,13 @@ func (m *MultiStrategyTenantDiscovery) getDeploymentsForLabelAnalysis(ctx contex
 }
 
 func (m *MultiStrategyTenantDiscovery) getStatefulSetsForLabelAnalysis(ctx context.Context) ([]interface{}, error) {
-	statefulSets, err := m.k8sClient.GetStatefulSets(ctx, "")
+	statefulSets, err := m.k8sClient.GetStatefulSets(ctx, "", metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	interfaces := make([]interface{}, len(statefulSets))
-	for i, statefulSet := range statefulSets {
+	interfaces := make([]interface{}, len(statefulSets.Items))
+	for i, statefulSet := range statefulSets.Items {
 		interfaces[i] = statefulSet
 	}
 
@@ -1274,7 +1274,7 @@ func (m *MultiStrategyTenantDiscovery) crossValidateTenants(ctx context.Context,
 		}
 
 		// Validate tenant by checking if namespace exists
-		if ns, err := m.k8sClient.GetNamespace(ctx, tenant.Namespace); err == nil && ns != nil {
+		if ns, err := m.k8sClient.GetNamespace(ctx, tenant.Namespace, metav1.GetOptions{}); err == nil && ns != nil {
 			tenant.Confidence = tenant.Confidence * 1.1 // Boost confidence by 10%
 		} else {
 			tenant.Confidence = tenant.Confidence * 0.8 // Reduce confidence by 20%

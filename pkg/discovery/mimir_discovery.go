@@ -840,7 +840,7 @@ func (m *MultiStrategyMimirDiscovery) consolidateMimirResults(results map[MimirD
 	componentMap := make(map[string]*MimirComponentInfo)
 
 	// Process results from all strategies
-	for strategy, result := range results {
+	for _, result := range results {
 		for _, component := range result.Components {
 			key := fmt.Sprintf("%s:%s", component.Namespace, component.Name)
 
