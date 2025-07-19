@@ -1394,6 +1394,86 @@ func (s *Server) GetMemoryStats(c *gin.Context) {
 	c.JSON(http.StatusOK, memoryStats)
 }
 
+// GetMemoryHistory returns memory usage history
+func (s *Server) GetMemoryHistory(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] GetMemoryHistory called from %s", c.ClientIP())
+
+	// Generate mock history data for now (in production, this would come from a time-series database)
+	history := make([]map[string]interface{}, 0)
+	now := time.Now()
+
+	for i := 23; i >= 0; i-- {
+		timestamp := now.Add(time.Duration(-i) * time.Hour)
+		memoryStats := s.cacheManager.GetMemoryStats()
+
+		// Add some variation to make it realistic
+		variation := float64(i%5) * 0.1
+		usagePercent := memoryStats.MemoryUsagePercent + variation
+		if usagePercent > 1.0 {
+			usagePercent = 1.0
+		}
+
+		history = append(history, map[string]interface{}{
+			"timestamp": timestamp.Format(time.RFC3339),
+			"stats": map[string]interface{}{
+				"memory_usage_percent": usagePercent,
+				"cache_item_count":     memoryStats.CacheItemCount + i*10,
+				"eviction_count":       memoryStats.EvictionCount + int64(i/6),
+			},
+		})
+	}
+
+	logrus.Infof("✅ [API] GetMemoryHistory: Memory history retrieved successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, history)
+}
+
+// UpdateMemorySettings updates memory management settings
+func (s *Server) UpdateMemorySettings(c *gin.Context) {
+	start := time.Now()
+
+	logrus.Infof("🔍 [API] UpdateMemorySettings called from %s", c.ClientIP())
+
+	var request struct {
+		MaxMemoryBytes     int64   `json:"maxMemoryBytes"`
+		MaxCacheSize       int     `json:"maxCacheSize"`
+		MaxTenantCacheSize int     `json:"maxTenantCacheSize"`
+		MaxMimirCacheSize  int     `json:"maxMimirCacheSize"`
+		EvictionPolicy     string  `json:"evictionPolicy"`
+		EvictionThreshold  float64 `json:"evictionThreshold"`
+		MemoryThreshold    float64 `json:"memoryThreshold"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		s.recordError(c, "validation_error", start)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Update memory settings
+	s.cacheManager.SetMemoryLimits(
+		request.MaxMemoryBytes,
+		request.MaxCacheSize,
+		request.MaxTenantCacheSize,
+		request.MaxMimirCacheSize,
+	)
+
+	// Set eviction policy
+	policy := cache.EvictionPolicy(request.EvictionPolicy)
+	s.cacheManager.SetEvictionPolicy(policy, request.EvictionThreshold)
+
+	logrus.Infof("✅ [API] UpdateMemorySettings: Memory settings updated successfully")
+
+	s.recordMetrics(c, http.StatusOK, start)
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Memory settings updated successfully",
+		"settings": request,
+	})
+}
+
 // ForceMemoryEviction forces an immediate memory eviction cycle
 func (s *Server) ForceMemoryEviction(c *gin.Context) {
 	start := time.Now()

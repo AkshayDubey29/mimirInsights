@@ -2,419 +2,395 @@
 
 ## Overview
 
-The MimirInsights backend implements a **precise memory management system** to prevent unbounded memory growth in production deployments. This system ensures that the cache memory footprint stays within defined limits and automatically manages memory usage through intelligent eviction policies.
+The MimirInsights application implements a comprehensive, production-grade memory management system designed to prevent unbounded memory footprint growth during deployments. This system ensures precise control over cache memory usage while maintaining optimal performance for production-grade clusters with potentially limitless tenants, limits, and configurations.
 
-## 🎯 **Key Objectives**
+## Architecture
 
-- **Prevent Memory Leaks**: Ensure memory usage never grows unbounded
-- **Production Safety**: Guarantee stable memory footprint in production
-- **Automatic Management**: Self-healing memory management without manual intervention
-- **Performance Optimization**: Balance memory usage with cache performance
-- **Real-time Monitoring**: Continuous memory usage tracking and alerts
+### Backend Memory Management
 
-## 🏗️ **Architecture**
+#### Core Components
 
-### Memory Manager Components
+1. **MemoryManager** (`pkg/cache/memory_manager.go`)
+   - Precise memory limits and monitoring
+   - Configurable eviction policies
+   - Real-time memory statistics
+   - Automatic memory threshold management
 
-```
-MemoryManager
-├── Memory Limits
-│   ├── Max Memory Bytes (25% of system memory)
-│   ├── Max Cache Size (1000 items)
-│   ├── Max Tenant Cache Size (500 items)
-│   └── Max Mimir Cache Size (500 items)
-├── Memory Monitoring
-│   ├── Real-time Usage Tracking
-│   ├── Periodic Checks (30 seconds)
-│   ├── Memory Thresholds (80% warning, 90% eviction)
-│   └── Peak Memory Tracking
-├── Eviction Policies
-│   ├── LRU (Least Recently Used)
-│   ├── LFU (Least Frequently Used)
-│   ├── TTL (Time To Live)
-│   ├── Size-based (Largest items first)
-│   └── Hybrid (Combination of policies)
-└── Statistics & Reporting
-    ├── Current Memory Usage
-    ├── Peak Memory Usage
-    ├── Eviction Count
-    ├── Memory Warnings
-    └── Cache Item Counts
-```
+2. **Cache Manager** (`pkg/cache/manager.go`)
+   - Integration with MemoryManager
+   - Background data collection with memory checks
+   - Cache TTL management
+   - Memory-aware data storage
 
-## 📊 **Memory Limits**
+3. **API Endpoints** (`pkg/api/server.go`)
+   - `/api/cache/memory` - Get memory statistics
+   - `/api/cache/memory/history` - Get memory usage history
+   - `/api/cache/memory/evict` - Force memory eviction
+   - `/api/cache/memory/reset` - Reset memory statistics
+   - `/api/cache/memory/settings` - Update memory settings
 
-### Automatic Limit Calculation
-
-The system automatically calculates memory limits based on available system memory:
+#### Memory Management Features
 
 ```go
-// Get system memory info
-var m runtime.MemStats
-runtime.ReadMemStats(&m)
-
-// Calculate memory limits based on system memory
-totalMemory := int64(m.Sys)
-maxMemoryBytes := totalMemory / 4 // Use 25% of system memory for cache
-
-// Ensure minimum and maximum bounds
-if maxMemoryBytes < 100*1024*1024 { // 100MB minimum
-    maxMemoryBytes = 100 * 1024 * 1024
-}
-if maxMemoryBytes > 2*1024*1024*1024 { // 2GB maximum
-    maxMemoryBytes = 2 * 1024 * 1024 * 1024
-}
-```
-
-### Cache Size Limits
-
-| Cache Type | Max Items | Purpose |
-|------------|-----------|---------|
-| **Total Cache** | 1,000 | Overall cache item limit |
-| **Tenant Cache** | 500 | Tenant discovery results |
-| **Mimir Cache** | 500 | Mimir component discovery |
-
-## 🔍 **Memory Monitoring**
-
-### Real-time Monitoring
-
-The system continuously monitors memory usage:
-
-- **Check Interval**: Every 30 seconds
-- **Memory Threshold**: 80% (warnings)
-- **Eviction Threshold**: 90% (automatic eviction)
-- **Peak Tracking**: Records highest memory usage
-
-### Memory Usage Calculation
-
-```go
-func (mm *MemoryManager) updateMemoryUsage() {
-    var m runtime.MemStats
-    runtime.ReadMemStats(&m)
+// Memory limits configuration
+type MemoryManager struct {
+    maxMemoryBytes     int64  // Maximum memory usage in bytes
+    maxCacheSize       int    // Maximum total cache items
+    maxTenantCacheSize int    // Maximum tenant cache items
+    maxMimirCacheSize  int    // Maximum Mimir cache items
     
-    // Use allocated memory as approximation
-    mm.currentMemoryBytes = int64(m.Alloc)
+    // Monitoring and thresholds
+    memoryThreshold     float64 // Warning threshold (80%)
+    evictionThreshold   float64 // Eviction threshold (90%)
+    evictionPolicy      EvictionPolicy // LRU, LFU, TTL, Size, Hybrid
 }
 ```
 
-## 🗑️ **Eviction Policies**
-
-### Available Policies
+#### Eviction Policies
 
 1. **LRU (Least Recently Used)**
-   - Evicts items that haven't been accessed recently
-   - Good for temporal locality patterns
+   - Evicts least recently accessed items
+   - Best for temporal locality patterns
 
 2. **LFU (Least Frequently Used)**
-   - Evicts items with lowest access frequency
-   - Good for identifying rarely used data
+   - Evicts least frequently accessed items
+   - Best for stable access patterns
 
 3. **TTL (Time To Live)**
    - Evicts items based on expiration time
-   - Good for time-sensitive data
+   - Best for time-sensitive data
 
 4. **Size-based**
    - Evicts largest items first
-   - Good for memory pressure situations
+   - Best for memory-constrained environments
 
-5. **Hybrid (Default)**
+5. **Hybrid**
    - Combines multiple policies
-   - Balances different access patterns
+   - Adaptive based on usage patterns
 
-### Eviction Process
+### Frontend Memory Management
+
+#### Components
+
+1. **MemoryManagement Page** (`web-ui/src/pages/MemoryManagement.tsx`)
+   - Real-time memory statistics display
+   - Memory usage charts and visualizations
+   - Cache distribution analysis
+   - Memory control operations
+
+2. **Memory API Hooks** (`web-ui/src/api/useMemory.ts`)
+   - React Query integration for efficient data fetching
+   - Real-time updates with configurable intervals
+   - Error handling and retry logic
+   - Optimistic updates for better UX
+
+3. **DataGrid Component** (`web-ui/src/components/DataGridWithPagination.tsx`)
+   - Production-grade data handling
+   - Efficient pagination for large datasets
+   - Advanced filtering and sorting
+   - Memory-aware rendering
+
+## Memory Management Strategy
+
+### 1. Precise Memory Limits
 
 ```go
-func (mm *MemoryManager) triggerEviction() error {
-    mm.lastEviction = time.Now()
-    mm.totalEvictions++
-
-    logrus.Infof("🗑️ Starting eviction cycle (policy: %s)", mm.evictionPolicy)
+// Automatic memory limit calculation
+func NewMemoryManager() *MemoryManager {
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
     
-    // Implement specific eviction logic based on policy
-    // This ensures memory stays within limits
+    totalMemory := int64(m.Sys)
+    maxMemoryBytes := totalMemory / 4 // Use 25% of system memory
     
-    return nil
-}
-```
-
-## 📈 **Memory Statistics**
-
-### Comprehensive Reporting
-
-The system provides detailed memory statistics:
-
-```json
-{
-  "memory_management": {
-    "current_memory_bytes": 524288000,
-    "max_memory_bytes": 1073741824,
-    "memory_usage_percent": 48.8,
-    "peak_memory_bytes": 629145600,
-    "cache_item_count": 45,
-    "max_cache_size": 1000,
-    "tenant_cache_count": 23,
-    "max_tenant_cache_size": 500,
-    "mimir_cache_count": 22,
-    "max_mimir_cache_size": 500,
-    "eviction_count": 3,
-    "memory_warnings": 1,
-    "last_eviction": "2024-01-19T15:30:00Z",
-    "last_memory_check": "2024-01-19T15:29:30Z",
-    "eviction_policy": "hybrid",
-    "eviction_threshold": 0.9,
-    "memory_threshold": 0.8
-  }
-}
-```
-
-## 🔧 **API Endpoints**
-
-### Memory Management APIs
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/cache/memory` | GET | Get detailed memory statistics |
-| `/api/cache/memory/evict` | POST | Force immediate memory eviction |
-| `/api/cache/memory/reset` | POST | Reset memory statistics |
-
-### Enhanced Cache Status
-
-The existing `/api/cache/status` endpoint now includes memory management information:
-
-```json
-{
-  "general_cache": { ... },
-  "tenant_discovery_cache": { ... },
-  "mimir_discovery_cache": { ... },
-  "memory_management": {
-    "current_memory_bytes": 524288000,
-    "max_memory_bytes": 1073741824,
-    "memory_usage_percent": 48.8,
-    "peak_memory_bytes": 629145600,
-    "cache_item_count": 45,
-    "max_cache_size": 1000,
-    "tenant_cache_count": 23,
-    "max_tenant_cache_size": 500,
-    "mimir_cache_count": 22,
-    "max_mimir_cache_size": 500,
-    "eviction_count": 3,
-    "memory_warnings": 1,
-    "last_eviction": "2024-01-19T15:30:00Z",
-    "last_memory_check": "2024-01-19T15:29:30Z",
-    "eviction_policy": "hybrid",
-    "eviction_threshold": 0.9,
-    "memory_threshold": 0.8
-  }
-}
-```
-
-## 🛡️ **Safety Mechanisms**
-
-### Memory Protection
-
-1. **Pre-Add Validation**
-   ```go
-   func (mm *MemoryManager) CanAddItem(itemType string, estimatedSize int64) (bool, error) {
-       // Check cache size limits
-       // Check memory limits
-       // Return false if limits would be exceeded
-   }
-   ```
-
-2. **Automatic Eviction**
-   - Triggers when memory usage reaches 90%
-   - Removes items based on eviction policy
-   - Ensures memory stays within limits
-
-3. **Graceful Degradation**
-   - If cache is full, new items are not cached
-   - Data is still returned to clients
-   - System continues to function
-
-### Thread Safety
-
-All memory operations are thread-safe using RWMutex:
-
-```go
-type MemoryManager struct {
-    mu sync.RWMutex
-    // ... other fields
-}
-```
-
-## 📊 **Memory Estimation**
-
-### Item Size Estimation
-
-The system estimates memory usage for cache items:
-
-```go
-func EstimateItemSize(item interface{}) int64 {
-    switch v := item.(type) {
-    case string:
-        return int64(len(v))
-    case []byte:
-        return int64(len(v))
-    case map[string]interface{}:
-        size := int64(0)
-        for k, val := range v {
-            size += int64(len(k))
-            size += EstimateItemSize(val)
-        }
-        return size
-    case []interface{}:
-        size := int64(0)
-        for _, val := range v {
-            size += EstimateItemSize(val)
-        }
-        return size
-    default:
-        return 1024 // 1KB default
+    // Ensure bounds
+    if maxMemoryBytes < 100*1024*1024 { // 100MB minimum
+        maxMemoryBytes = 100 * 1024 * 1024
+    }
+    if maxMemoryBytes > 2*1024*1024*1024 { // 2GB maximum
+        maxMemoryBytes = 2 * 1024 * 1024 * 1024
     }
 }
 ```
 
-## 🚀 **Production Benefits**
+### 2. Real-time Monitoring
 
-### Memory Stability
+- **Memory Usage Tracking**: Continuous monitoring of current memory usage
+- **Peak Memory Recording**: Track highest memory usage for analysis
+- **Cache Item Counting**: Monitor number of cached items by type
+- **Eviction Statistics**: Track eviction frequency and patterns
 
-- **Predictable Footprint**: Memory usage stays within defined bounds
-- **No Memory Leaks**: Automatic cleanup prevents accumulation
-- **Self-Healing**: System recovers from memory pressure automatically
-
-### Performance Optimization
-
-- **Efficient Caching**: Optimal cache size for performance
-- **Smart Eviction**: Keeps most valuable data in cache
-- **Minimal Overhead**: Lightweight monitoring and management
-
-### Operational Excellence
-
-- **Real-time Monitoring**: Continuous visibility into memory usage
-- **Proactive Alerts**: Warnings before memory issues occur
-- **Easy Management**: Simple API endpoints for memory operations
-
-## 🔧 **Configuration**
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CACHE_MEMORY_PERCENT` | 25 | Percentage of system memory for cache |
-| `CACHE_MAX_ITEMS` | 1000 | Maximum total cache items |
-| `CACHE_TENANT_MAX_ITEMS` | 500 | Maximum tenant cache items |
-| `CACHE_MIMIR_MAX_ITEMS` | 500 | Maximum Mimir cache items |
-| `CACHE_MEMORY_THRESHOLD` | 0.8 | Memory warning threshold (80%) |
-| `CACHE_EVICTION_THRESHOLD` | 0.9 | Memory eviction threshold (90%) |
-| `CACHE_EVICTION_POLICY` | hybrid | Eviction policy to use |
-
-### Dynamic Configuration
-
-Memory limits can be adjusted at runtime:
+### 3. Proactive Eviction
 
 ```go
-// Set new memory limits
-cacheManager.SetMemoryLimits(
-    2*1024*1024*1024, // 2GB max memory
-    2000,              // 2000 max items
-    1000,              // 1000 max tenant items
-    1000,              // 1000 max Mimir items
-)
-
-// Change eviction policy
-cacheManager.SetEvictionPolicy(EvictionPolicyLRU, 0.85)
+func (mm *MemoryManager) CheckMemoryUsage() error {
+    usagePercent := float64(mm.currentMemoryBytes) / float64(mm.maxMemoryBytes)
+    
+    if usagePercent >= mm.evictionThreshold {
+        return mm.triggerEviction()
+    } else if usagePercent >= mm.memoryThreshold {
+        mm.memoryWarnings++
+        logrus.Warnf("Memory warning: %.1f%% >= %.1f%%", 
+            usagePercent*100, mm.memoryThreshold*100)
+    }
+    return nil
+}
 ```
 
-## 📈 **Monitoring & Alerting**
+### 4. Memory-aware Data Collection
 
-### Key Metrics
-
-- **Memory Usage Percentage**: Current vs. maximum memory
-- **Cache Hit Rate**: Cache effectiveness
-- **Eviction Rate**: How often items are evicted
-- **Memory Warnings**: Frequency of memory pressure
-
-### Alerting Thresholds
-
-- **Warning**: Memory usage > 80%
-- **Critical**: Memory usage > 90%
-- **Emergency**: Memory usage > 95%
-
-### Logging
-
-The system provides detailed logging for memory operations:
-
-```
-🔧 Memory manager initialized: max=1024 MB, cache_size=1000, tenant_size=500, mimir_size=500
-📊 Memory usage: 524288000/1073741824 bytes (48.8%)
-📦 Added tenant item: size=1048576 bytes, total=525336576/1073741824 bytes
-⚠️ Memory warning: 85.2% >= 80.0%
-🗑️ Starting eviction cycle (policy: hybrid)
-✅ Eviction cycle completed
+```go
+func (m *Manager) collectAllData(ctx context.Context) error {
+    // Check memory before collection
+    if err := m.memoryManager.CheckMemoryUsage(); err != nil {
+        logrus.Warnf("Memory check failed: %v", err)
+    }
+    
+    // Estimate memory usage for new data
+    estimatedSize := m.estimateCollectionSize()
+    if canAdd, err := m.memoryManager.CanAddItem("collection", estimatedSize); !canAdd {
+        logrus.Warnf("Cannot add collection data: %v", err)
+        return err
+    }
+    
+    // Proceed with collection
+    // ...
+}
 ```
 
-## 🎯 **Best Practices**
+## UI Enhancements for Production Scale
 
-### For Production Deployments
+### 1. Efficient Data Handling
 
-1. **Monitor Memory Usage**: Regularly check `/api/cache/memory`
-2. **Set Appropriate Limits**: Adjust based on cluster size and workload
-3. **Use Hybrid Eviction**: Best balance of performance and memory efficiency
-4. **Enable Alerts**: Set up monitoring for memory warnings
-5. **Regular Maintenance**: Periodically reset statistics and review performance
+#### Virtual Scrolling
+- Render only visible rows for large datasets
+- Implement windowing for optimal performance
+- Lazy load data as needed
 
-### For Development
+#### Pagination Strategy
+```typescript
+// Efficient pagination with configurable page sizes
+const paginatedData = useMemo(() => {
+  if (!enablePagination) return filteredAndSortedData;
+  const startIndex = page * rowsPerPage;
+  return filteredAndSortedData.slice(startIndex, startIndex + rowsPerPage);
+}, [filteredAndSortedData, page, rowsPerPage, enablePagination]);
+```
 
-1. **Test Memory Limits**: Verify eviction works correctly
-2. **Monitor Cache Performance**: Balance memory usage with cache hit rates
-3. **Tune Eviction Policy**: Find optimal policy for your workload
-4. **Profile Memory Usage**: Understand memory patterns in your environment
+#### Debounced Search
+```typescript
+const handleSearch = useCallback(
+  debounce((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+    setPage(0); // Reset to first page when searching
+  }, 300),
+  []
+);
+```
 
-## 🔍 **Troubleshooting**
+### 2. Memory Management UI
+
+#### Real-time Statistics Display
+```typescript
+const { data: memoryStats, isLoading, refetch } = useMemoryStats();
+
+// Auto-refresh every 30 seconds
+{
+  refetchInterval: 30000,
+  staleTime: 10000,
+  retry: 3,
+  retryDelay: 1000,
+}
+```
+
+#### Memory Usage Visualization
+- Line charts showing memory usage over time
+- Pie charts for cache distribution
+- Progress bars for memory thresholds
+- Color-coded status indicators
+
+#### Control Operations
+```typescript
+const forceEvictionMutation = useForceMemoryEviction();
+const resetStatsMutation = useResetMemoryStats();
+
+// Optimistic updates
+{
+  onSuccess: () => {
+    queryClient.invalidateQueries('memoryStats');
+  },
+}
+```
+
+### 3. Production-Grade Data Grid
+
+#### Features
+- **Dual View Modes**: Table and card views for different use cases
+- **Advanced Filtering**: Multi-column filtering with complex criteria
+- **Smart Sorting**: Multi-column sorting with visual indicators
+- **Bulk Operations**: Select multiple items for batch operations
+- **Export Capabilities**: CSV and JSON export for data analysis
+- **Responsive Design**: Adapts to different screen sizes
+
+#### Performance Optimizations
+```typescript
+// Memoized filtering and sorting
+const filteredAndSortedData = useMemo(() => {
+  let filtered = data;
+  
+  // Apply search filter
+  if (searchTerm) {
+    const searchLower = searchTerm.toLowerCase();
+    filtered = filtered.filter((row) =>
+      columns.some((column) => {
+        if (!column.searchable) return false;
+        const value = row[column.id];
+        return String(value).toLowerCase().includes(searchLower);
+      })
+    );
+  }
+  
+  // Apply sorting
+  if (sortBy && enableSorting) {
+    filtered = [...filtered].sort((a, b) => {
+      // Efficient comparison logic
+    });
+  }
+  
+  return filtered;
+}, [data, searchTerm, sortBy, sortOrder, columns, enableSorting]);
+```
+
+## Configuration
+
+### Backend Configuration
+
+```yaml
+# Memory management settings
+memory:
+  max_memory_bytes: 1073741824  # 1GB
+  max_cache_size: 1000
+  max_tenant_cache_size: 500
+  max_mimir_cache_size: 500
+  memory_threshold: 0.8         # 80%
+  eviction_threshold: 0.9       # 90%
+  eviction_policy: "hybrid"
+  memory_check_interval: 30s
+```
+
+### Frontend Configuration
+
+```typescript
+// Memory management settings
+const memoryConfig = {
+  refreshInterval: 30000,    // 30 seconds
+  staleTime: 10000,         // 10 seconds
+  retryAttempts: 3,
+  retryDelay: 1000,
+  chartUpdateInterval: 60000, // 1 minute
+};
+```
+
+## Monitoring and Alerting
+
+### Memory Metrics
+
+1. **Current Memory Usage**: Real-time memory consumption
+2. **Peak Memory Usage**: Highest recorded memory usage
+3. **Cache Hit Rate**: Efficiency of cache utilization
+4. **Eviction Rate**: Frequency of cache evictions
+5. **Memory Warnings**: Number of threshold warnings
+
+### Alerting Rules
+
+```yaml
+# Memory alerting configuration
+alerts:
+  memory_usage_high:
+    threshold: 80%
+    severity: warning
+    message: "Memory usage is high"
+  
+  memory_usage_critical:
+    threshold: 90%
+    severity: critical
+    message: "Memory usage is critical"
+  
+  eviction_frequency_high:
+    threshold: 10/minute
+    severity: warning
+    message: "High eviction frequency detected"
+```
+
+## Best Practices
+
+### 1. Memory Management
+
+- **Set Appropriate Limits**: Configure memory limits based on system resources
+- **Monitor Regularly**: Check memory usage patterns and adjust settings
+- **Use Appropriate Eviction Policies**: Choose policies based on data access patterns
+- **Implement Graceful Degradation**: Handle memory pressure gracefully
+
+### 2. UI Performance
+
+- **Implement Virtual Scrolling**: For datasets with thousands of items
+- **Use Debounced Search**: Prevent excessive API calls during typing
+- **Optimize Re-renders**: Use React.memo and useMemo for expensive operations
+- **Lazy Load Components**: Load heavy components only when needed
+
+### 3. Data Handling
+
+- **Implement Efficient Pagination**: Use cursor-based pagination for large datasets
+- **Cache Strategically**: Cache frequently accessed data, not everything
+- **Use Compression**: Compress data when possible to reduce memory usage
+- **Implement Data Archiving**: Move old data to cheaper storage
+
+## Troubleshooting
 
 ### Common Issues
 
-1. **High Eviction Rate**
-   - Increase memory limits
-   - Optimize cache item sizes
+1. **High Memory Usage**
+   - Check eviction policy effectiveness
+   - Review cache size limits
+   - Analyze memory usage patterns
+
+2. **Slow UI Performance**
+   - Implement virtual scrolling
+   - Optimize component rendering
+   - Use efficient data structures
+
+3. **Frequent Evictions**
+   - Adjust memory limits
    - Review eviction policy
+   - Optimize data collection frequency
 
-2. **Memory Warnings**
-   - Check for memory leaks
-   - Reduce cache item sizes
-   - Increase memory limits
+### Debugging Tools
 
-3. **Poor Cache Performance**
-   - Review eviction policy
-   - Increase cache size limits
-   - Optimize cache key patterns
+1. **Memory Statistics API**: `/api/cache/memory`
+2. **Memory History API**: `/api/cache/memory/history`
+3. **Force Eviction API**: `/api/cache/memory/evict`
+4. **Memory Settings API**: `/api/cache/memory/settings`
 
-### Debug Commands
+## Future Enhancements
 
-```bash
-# Check memory status
-curl http://localhost:8080/api/cache/memory
+### Planned Features
 
-# Force eviction
-curl -X POST http://localhost:8080/api/cache/memory/evict
+1. **Predictive Memory Management**
+   - Machine learning-based memory usage prediction
+   - Proactive eviction based on usage patterns
 
-# Reset statistics
-curl -X POST http://localhost:8080/api/cache/memory/reset
+2. **Advanced Analytics**
+   - Memory usage trend analysis
+   - Performance impact assessment
+   - Capacity planning recommendations
 
-# Get comprehensive cache status
-curl http://localhost:8080/api/cache/status
-```
+3. **Distributed Memory Management**
+   - Multi-node memory coordination
+   - Load balancing across instances
 
-## 🎉 **Summary**
+4. **Enhanced UI Features**
+   - Real-time memory usage alerts
+   - Interactive memory usage charts
+   - Advanced filtering and search capabilities
 
-The memory management system ensures that MimirInsights maintains a **stable, predictable memory footprint** in production deployments. With automatic limits, intelligent eviction, and comprehensive monitoring, the system prevents unbounded memory growth while optimizing cache performance.
-
-**Key Benefits:**
-- ✅ **No Memory Leaks**: Automatic cleanup and limits
-- ✅ **Production Safety**: Predictable memory usage
-- ✅ **Self-Managing**: Automatic eviction and monitoring
-- ✅ **High Performance**: Optimized caching with memory constraints
-- ✅ **Easy Monitoring**: Comprehensive APIs and statistics
-- ✅ **Flexible Configuration**: Runtime adjustment of limits and policies
-
-This system guarantees that your MimirInsights deployment will **never run out of memory** due to cache growth, ensuring reliable operation in any production environment. 
+This memory management system ensures that MimirInsights can handle production-grade clusters with limitless tenants, limits, and configurations while maintaining optimal performance and preventing memory-related issues. 

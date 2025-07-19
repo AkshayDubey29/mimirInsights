@@ -81,8 +81,10 @@ func main() {
 		apiGroup.GET("/cache/status", server.GetCacheStatus)
 		apiGroup.POST("/cache/refresh", server.ForceCacheRefresh)
 		apiGroup.GET("/cache/memory", server.GetMemoryStats)
+		apiGroup.GET("/cache/memory/history", server.GetMemoryHistory)
 		apiGroup.POST("/cache/memory/evict", server.ForceMemoryEviction)
 		apiGroup.POST("/cache/memory/reset", server.ResetMemoryStats)
+		apiGroup.POST("/cache/memory/settings", server.UpdateMemorySettings)
 	}
 
 	// Serve static files for UI

@@ -13,6 +13,7 @@ import Limits from './pages/Limits';
 import Config from './pages/Config';
 import Reports from './pages/Reports';
 import EnvironmentStatus from './components/EnvironmentStatus';
+import MemoryManagement from './pages/MemoryManagement';
 
 const darkTheme = createTheme({
   palette: {
@@ -57,7 +58,8 @@ function App() {
                 <Route path="/limits" element={<Limits />} />
                 <Route path="/config" element={<Config />} />
                 <Route path="/reports" element={<Reports />} />
-                <Route path="/environment-status" element={<EnvironmentStatus />} />
+                <Route path="/environment" element={<EnvironmentStatus />} />
+                <Route path="/memory" element={<MemoryManagement />} />
               </Routes>
             </Layout>
           </Box>
