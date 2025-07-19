@@ -42,12 +42,12 @@ export const useEnvironment = (): UseEnvironmentReturn => {
       
       // Transform the data to match the expected format
       const transformedData: Environment = {
-        mimir_namespace: result.environment?.mimir_namespace || 'Unknown',
-        detected_tenants: result.environment?.detected_tenants || [],
-        mimir_components: result.environment?.mimir_components || [],
-        data_source: result.environment?.data_source || 'Production',
+        mimir_namespace: result.cluster_info?.mimir_namespace || 'Unknown',
+        detected_tenants: result.detected_tenants || [],
+        mimir_components: result.mimir_components || [],
+        data_source: result.cluster_info?.data_source || 'Production',
         discovery_confidence: result.environment?.discovery_confidence || 0,
-        last_updated: result.environment?.last_updated || new Date().toISOString(),
+        last_updated: result.last_updated || new Date().toISOString(),
       };
 
       setData(transformedData);
