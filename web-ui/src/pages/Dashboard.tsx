@@ -54,7 +54,7 @@ const Dashboard: React.FC = () => {
 
       // Use tenants data directly since the dashboard endpoint is not available yet
       if (tenants && tenants.length > 0) {
-        const healthyCount = tenants.filter(t => t.status === 'healthy' || t.status === 'active').length;
+        const healthyCount = tenants.filter(t => t.status === 'healthy' || (t.status as any) === 'active').length;
         const warningCount = tenants.filter(t => t.status === 'warning').length;
         const criticalCount = tenants.filter(t => t.status === 'critical').length;
         

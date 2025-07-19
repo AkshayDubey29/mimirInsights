@@ -4,7 +4,7 @@ interface Tenant {
   id: string;
   name: string;
   namespace: string;
-  status: 'healthy' | 'warning' | 'critical' | 'inactive';
+  status: 'healthy' | 'warning' | 'critical' | 'inactive' | 'active';
   discoveredAt: string;
   lastSeen: string;
   has_real_data: boolean;
