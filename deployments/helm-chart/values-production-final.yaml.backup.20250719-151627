@@ -558,7 +558,7 @@ securityContext:
 # Backend configuration
 backend:
   enabled: true
-  image: ghcr.io/akshaydubey29/mimir-insights-backend:20250719-093912
+  image: ghcr.io/akshaydubey29/mimir-insights-backend-20250719-141900
   replicaCount: 2
   resources:
     requests:
@@ -668,7 +668,7 @@ backend:
 # Frontend configuration
 frontend:
   enabled: true
-  image: ghcr.io/akshaydubey29/mimir-insights-frontend:20250719-093912
+  image: ghcr.io/akshaydubey29/mimir-insights-frontend-20250719-141900
   replicaCount: 2
   resources:
     requests:
@@ -679,7 +679,7 @@ frontend:
       memory: 256Mi
   env:
     - name: REACT_APP_API_BASE_URL
-      value: "/api"
+      value: ""
     - name: REACT_APP_ENABLE_MOCK_DATA
       value: "false"
     - name: REACT_APP_ENABLE_MONITORING

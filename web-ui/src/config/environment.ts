@@ -18,14 +18,14 @@ export const config = {
   useMockData: runtimeConfig.useMockData || process.env.REACT_APP_USE_MOCK_DATA === 'true',
   // Environment
   environment: process.env.NODE_ENV || 'development',
-  // API endpoints - include /api prefix since nginx will proxy to backend
+  // API endpoints - no /api prefix since apiBaseUrl includes it
   endpoints: {
-    tenants: '/api/tenants',
-    metrics: '/api/metrics',
-    limits: '/api/limits',
-    configs: '/api/config',
-    reports: '/api/capacity',  // Fixed: Use capacity endpoint for reports
-    audit: '/api/audit',       // Added: Separate audit endpoint
+    tenants: '/tenants',
+    metrics: '/metrics',
+    limits: '/limits',
+    configs: '/config',
+    reports: '/capacity',  // Fixed: Use capacity endpoint for reports
+    audit: '/audit',       // Added: Separate audit endpoint
   },
 };
 
