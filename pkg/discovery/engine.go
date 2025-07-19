@@ -26,8 +26,6 @@ type Engine struct {
 	multiStrategyDiscovery *MultiStrategyTenantDiscovery
 	// Multi-strategy Mimir discovery
 	multiStrategyMimirDiscovery *MultiStrategyMimirDiscovery
-	// Discovery cache for efficient serving
-	cache *DiscoveryCache
 }
 
 // CompiledPatterns holds pre-compiled regex patterns for efficient matching
@@ -168,14 +166,6 @@ func NewEngine() *Engine {
 
 	// Initialize multi-strategy Mimir discovery
 	engine.multiStrategyMimirDiscovery = NewMultiStrategyMimirDiscovery(engine)
-
-	// Initialize discovery cache
-	engine.cache = NewDiscoveryCache(engine)
-
-	// Perform initial discovery on startup
-	if err := engine.cache.InitialDiscovery(context.Background()); err != nil {
-		logrus.Warnf("⚠️ Initial discovery failed: %v", err)
-	}
 
 	return engine
 }
@@ -1755,42 +1745,4 @@ func (e *Engine) DiscoverMimirComprehensive(ctx context.Context) (*Comprehensive
 	}
 
 	return e.multiStrategyMimirDiscovery.DiscoverMimirComprehensive(ctx)
-}
-
-// GetTenantDiscovery returns cached tenant discovery results
-func (e *Engine) GetTenantDiscovery(ctx context.Context) (*ComprehensiveTenantDiscoveryResult, error) {
-	if e.cache == nil {
-		return nil, fmt.Errorf("discovery cache not initialized")
-	}
-
-	return e.cache.GetTenantDiscovery(ctx)
-}
-
-// GetMimirDiscovery returns cached Mimir discovery results
-func (e *Engine) GetMimirDiscovery(ctx context.Context) (*ComprehensiveMimirDiscoveryResult, error) {
-	if e.cache == nil {
-		return nil, fmt.Errorf("discovery cache not initialized")
-	}
-
-	return e.cache.GetMimirDiscovery(ctx)
-}
-
-// GetCacheStatus returns the current cache status
-func (e *Engine) GetCacheStatus() map[string]interface{} {
-	if e.cache == nil {
-		return map[string]interface{}{
-			"error": "discovery cache not initialized",
-		}
-	}
-
-	return e.cache.GetCacheStatus()
-}
-
-// RefreshCache forces a refresh of all discovery caches
-func (e *Engine) RefreshCache(ctx context.Context) error {
-	if e.cache == nil {
-		return fmt.Errorf("discovery cache not initialized")
-	}
-
-	return e.cache.RefreshAllDiscovery(ctx)
 }

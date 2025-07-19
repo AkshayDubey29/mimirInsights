@@ -1122,7 +1122,7 @@ func (s *Server) GetComprehensiveTenantDiscovery(c *gin.Context) {
 	logrus.Infof("📋 [API] GetComprehensiveTenantDiscovery: Starting multi-strategy tenant discovery")
 
 	// Get cached tenant discovery results
-	result, err := s.discoveryEngine.GetTenantDiscovery(ctx)
+	result, err := s.cacheManager.GetTenantDiscovery(ctx)
 	if err != nil {
 		logrus.Errorf("❌ [API] GetComprehensiveTenantDiscovery: Failed to get tenant discovery: %v", err)
 		s.recordError(c, "discovery_error", start)
@@ -1147,7 +1147,7 @@ func (s *Server) GetComprehensiveMimirDiscovery(c *gin.Context) {
 	logrus.Infof("📋 [API] GetComprehensiveMimirDiscovery: Starting multi-strategy Mimir discovery")
 
 	// Get cached Mimir discovery results
-	result, err := s.discoveryEngine.GetMimirDiscovery(ctx)
+	result, err := s.cacheManager.GetMimirDiscovery(ctx)
 	if err != nil {
 		logrus.Errorf("❌ [API] GetComprehensiveMimirDiscovery: Failed to get Mimir discovery: %v", err)
 		s.recordError(c, "mimir_discovery_error", start)
@@ -1161,47 +1161,6 @@ func (s *Server) GetComprehensiveMimirDiscovery(c *gin.Context) {
 
 	s.recordMetrics(c, http.StatusOK, start)
 	c.JSON(http.StatusOK, result)
-}
-
-// GetDiscoveryCacheStatus returns the current status of discovery caches
-func (s *Server) GetDiscoveryCacheStatus(c *gin.Context) {
-	start := time.Now()
-
-	logrus.Infof("🔍 [API] GetDiscoveryCacheStatus called from %s", c.ClientIP())
-
-	// Get cache status from discovery engine
-	cacheStatus := s.discoveryEngine.GetCacheStatus()
-
-	logrus.Infof("✅ [API] GetDiscoveryCacheStatus: Cache status retrieved successfully")
-
-	s.recordMetrics(c, http.StatusOK, start)
-	c.JSON(http.StatusOK, cacheStatus)
-}
-
-// RefreshDiscoveryCache forces a refresh of all discovery caches
-func (s *Server) RefreshDiscoveryCache(c *gin.Context) {
-	start := time.Now()
-	ctx := c.Request.Context()
-
-	logrus.Infof("🔍 [API] RefreshDiscoveryCache called from %s", c.ClientIP())
-	logrus.Info("🔄 [API] RefreshDiscoveryCache: Forcing cache refresh")
-
-	// Force refresh of all discovery caches
-	err := s.discoveryEngine.RefreshCache(ctx)
-	if err != nil {
-		logrus.Errorf("❌ [API] RefreshDiscoveryCache: Failed to refresh cache: %v", err)
-		s.recordError(c, "cache_refresh_error", start)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	logrus.Infof("✅ [API] RefreshDiscoveryCache: Cache refresh completed successfully")
-
-	s.recordMetrics(c, http.StatusOK, start)
-	c.JSON(http.StatusOK, gin.H{
-		"message":   "Cache refresh completed successfully",
-		"timestamp": time.Now(),
-	})
 }
 
 // GetDiscoveryDetails returns comprehensive discovery information

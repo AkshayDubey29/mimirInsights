@@ -27,12 +27,22 @@ type Manager struct {
 	stopChan           chan struct{}
 	isRunning          bool
 	runningLock        sync.Mutex
+
+	// Discovery cache TTL settings
+	tenantCacheTTL time.Duration
+	mimirCacheTTL  time.Duration
 }
 
 // Cache holds all cached data
 type Cache struct {
 	// Discovery data
 	DiscoveryResult *discovery.DiscoveryResult `json:"discovery_result"`
+
+	// Comprehensive discovery data (new multi-strategy)
+	TenantDiscoveryCache   *discovery.ComprehensiveTenantDiscoveryResult `json:"tenant_discovery_cache"`
+	MimirDiscoveryCache    *discovery.ComprehensiveMimirDiscoveryResult  `json:"mimir_discovery_cache"`
+	TenantCacheLastUpdated time.Time                                     `json:"tenant_cache_last_updated"`
+	MimirCacheLastUpdated  time.Time                                     `json:"mimir_cache_last_updated"`
 
 	// Metrics data
 	TenantMetrics map[string]*TenantMetricsData `json:"tenant_metrics"`
@@ -71,6 +81,8 @@ func NewManager(discoveryEngine *discovery.Engine, metricsClient *metrics.Client
 		cache:              &Cache{},
 		collectionInterval: 30 * time.Second, // Collect every 30 seconds
 		stopChan:           make(chan struct{}),
+		tenantCacheTTL:     5 * time.Minute,  // 5 minutes TTL for tenant discovery
+		mimirCacheTTL:      10 * time.Minute, // 10 minutes TTL for Mimir discovery
 	}
 }
 
@@ -353,18 +365,217 @@ func (m *Manager) GetCacheStatus() map[string]interface{} {
 	defer m.cacheLock.RUnlock()
 
 	return map[string]interface{}{
-		"last_updated":        m.cache.LastUpdated,
-		"last_collection":     m.cache.LastCollection,
-		"collection_count":    m.cache.CollectionCount,
-		"collection_interval": m.collectionInterval.String(),
-		"is_running":          m.isRunning,
-		"tenant_count":        len(m.cache.TenantMetrics),
-		"mimir_components":    len(m.cache.DiscoveryResult.MimirComponents),
+		"general_cache": map[string]interface{}{
+			"last_updated":        m.cache.LastUpdated,
+			"last_collection":     m.cache.LastCollection,
+			"collection_count":    m.cache.CollectionCount,
+			"collection_interval": m.collectionInterval.String(),
+			"is_running":          m.isRunning,
+			"tenant_count":        len(m.cache.TenantMetrics),
+			"mimir_components":    len(m.cache.DiscoveryResult.MimirComponents),
+		},
+		"tenant_discovery_cache": map[string]interface{}{
+			"cached":          m.cache.TenantDiscoveryCache != nil,
+			"last_updated":    m.cache.TenantCacheLastUpdated,
+			"ttl":             m.tenantCacheTTL,
+			"is_valid":        m.isTenantCacheValid(),
+			"cache_age":       time.Since(m.cache.TenantCacheLastUpdated),
+			"component_count": m.getTenantDiscoveryCount(),
+		},
+		"mimir_discovery_cache": map[string]interface{}{
+			"cached":          m.cache.MimirDiscoveryCache != nil,
+			"last_updated":    m.cache.MimirCacheLastUpdated,
+			"ttl":             m.mimirCacheTTL,
+			"is_valid":        m.isMimirCacheValid(),
+			"cache_age":       time.Since(m.cache.MimirCacheLastUpdated),
+			"component_count": m.getMimirDiscoveryCount(),
+		},
 	}
 }
 
-// ForceRefresh triggers an immediate data collection
+// ForceRefresh triggers an immediate data collection including discovery caches
 func (m *Manager) ForceRefresh(ctx context.Context) error {
-	logrus.Info("Force refreshing cache data")
-	return m.collectAllData(ctx)
+	logrus.Info("Force refreshing all cache data")
+
+	// Refresh discovery caches in parallel with general data collection
+	var discoveryErr error
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		discoveryErr = m.RefreshAllDiscovery(ctx)
+	}()
+
+	// Perform general data collection
+	generalErr := m.collectAllData(ctx)
+
+	// Wait for discovery refresh to complete
+	wg.Wait()
+
+	// Return error if either failed
+	if generalErr != nil {
+		return fmt.Errorf("general cache refresh failed: %w", generalErr)
+	}
+	if discoveryErr != nil {
+		return fmt.Errorf("discovery cache refresh failed: %w", discoveryErr)
+	}
+
+	return nil
+}
+
+// GetTenantDiscovery returns cached tenant discovery results or performs fresh discovery
+func (m *Manager) GetTenantDiscovery(ctx context.Context) (*discovery.ComprehensiveTenantDiscoveryResult, error) {
+	m.cacheLock.RLock()
+
+	// Check if cache is valid
+	if m.isTenantCacheValid() {
+		logrus.Debug("📋 Serving tenant discovery from cache")
+		result := m.cache.TenantDiscoveryCache
+		m.cacheLock.RUnlock()
+		return result, nil
+	}
+
+	m.cacheLock.RUnlock()
+
+	// Cache is invalid or expired, perform fresh discovery
+	logrus.Info("🔄 Tenant discovery cache expired, performing fresh discovery")
+	return m.refreshTenantDiscovery(ctx)
+}
+
+// GetMimirDiscovery returns cached Mimir discovery results or performs fresh discovery
+func (m *Manager) GetMimirDiscovery(ctx context.Context) (*discovery.ComprehensiveMimirDiscoveryResult, error) {
+	m.cacheLock.RLock()
+
+	// Check if cache is valid
+	if m.isMimirCacheValid() {
+		logrus.Debug("📋 Serving Mimir discovery from cache")
+		result := m.cache.MimirDiscoveryCache
+		m.cacheLock.RUnlock()
+		return result, nil
+	}
+
+	m.cacheLock.RUnlock()
+
+	// Cache is invalid or expired, perform fresh discovery
+	logrus.Info("🔄 Mimir discovery cache expired, performing fresh discovery")
+	return m.refreshMimirDiscovery(ctx)
+}
+
+// RefreshTenantDiscovery forces a refresh of tenant discovery cache
+func (m *Manager) RefreshTenantDiscovery(ctx context.Context) (*discovery.ComprehensiveTenantDiscoveryResult, error) {
+	logrus.Info("🔄 Forcing tenant discovery cache refresh")
+	return m.refreshTenantDiscovery(ctx)
+}
+
+// RefreshMimirDiscovery forces a refresh of Mimir discovery cache
+func (m *Manager) RefreshMimirDiscovery(ctx context.Context) (*discovery.ComprehensiveMimirDiscoveryResult, error) {
+	logrus.Info("🔄 Forcing Mimir discovery cache refresh")
+	return m.refreshMimirDiscovery(ctx)
+}
+
+// RefreshAllDiscovery forces a refresh of both tenant and Mimir discovery caches
+func (m *Manager) RefreshAllDiscovery(ctx context.Context) error {
+	logrus.Info("🔄 Forcing complete discovery cache refresh")
+
+	// Perform both discoveries in parallel
+	var tenantErr, mimirErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Tenant discovery
+	go func() {
+		defer wg.Done()
+		_, tenantErr = m.refreshTenantDiscovery(ctx)
+	}()
+
+	// Mimir discovery
+	go func() {
+		defer wg.Done()
+		_, mimirErr = m.refreshMimirDiscovery(ctx)
+	}()
+
+	// Wait for both to complete
+	wg.Wait()
+
+	// Check for errors
+	if tenantErr != nil {
+		logrus.Errorf("❌ Tenant discovery refresh failed: %v", tenantErr)
+	}
+	if mimirErr != nil {
+		logrus.Errorf("❌ Mimir discovery refresh failed: %v", mimirErr)
+	}
+
+	if tenantErr != nil || mimirErr != nil {
+		return fmt.Errorf("discovery refresh failed: tenant=%v, mimir=%v", tenantErr, mimirErr)
+	}
+
+	logrus.Info("✅ Complete discovery cache refresh completed successfully")
+	return nil
+}
+
+// Private methods for discovery cache management
+
+func (m *Manager) refreshTenantDiscovery(ctx context.Context) (*discovery.ComprehensiveTenantDiscoveryResult, error) {
+	// Perform fresh tenant discovery
+	result, err := m.discoveryEngine.DiscoverTenantsComprehensive(ctx)
+	if err != nil {
+		logrus.Errorf("❌ Tenant discovery failed: %v", err)
+		return nil, err
+	}
+
+	// Update cache
+	m.cacheLock.Lock()
+	m.cache.TenantDiscoveryCache = result
+	m.cache.TenantCacheLastUpdated = time.Now()
+	m.cacheLock.Unlock()
+
+	logrus.Infof("✅ Tenant discovery cache updated with %d tenants", len(result.ConsolidatedTenants))
+	return result, nil
+}
+
+func (m *Manager) refreshMimirDiscovery(ctx context.Context) (*discovery.ComprehensiveMimirDiscoveryResult, error) {
+	// Perform fresh Mimir discovery
+	result, err := m.discoveryEngine.DiscoverMimirComprehensive(ctx)
+	if err != nil {
+		logrus.Errorf("❌ Mimir discovery failed: %v", err)
+		return nil, err
+	}
+
+	// Update cache
+	m.cacheLock.Lock()
+	m.cache.MimirDiscoveryCache = result
+	m.cache.MimirCacheLastUpdated = time.Now()
+	m.cacheLock.Unlock()
+
+	logrus.Infof("✅ Mimir discovery cache updated with %d components", len(result.ConsolidatedComponents))
+	return result, nil
+}
+
+func (m *Manager) isTenantCacheValid() bool {
+	if m.cache.TenantDiscoveryCache == nil {
+		return false
+	}
+	return time.Since(m.cache.TenantCacheLastUpdated) < m.tenantCacheTTL
+}
+
+func (m *Manager) isMimirCacheValid() bool {
+	if m.cache.MimirDiscoveryCache == nil {
+		return false
+	}
+	return time.Since(m.cache.MimirCacheLastUpdated) < m.mimirCacheTTL
+}
+
+func (m *Manager) getTenantDiscoveryCount() int {
+	if m.cache.TenantDiscoveryCache == nil {
+		return 0
+	}
+	return len(m.cache.TenantDiscoveryCache.ConsolidatedTenants)
+}
+
+func (m *Manager) getMimirDiscoveryCount() int {
+	if m.cache.MimirDiscoveryCache == nil {
+		return 0
+	}
+	return len(m.cache.MimirDiscoveryCache.ConsolidatedComponents)
 }
