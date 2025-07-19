@@ -560,7 +560,7 @@ securityContext:
 # Backend configuration
 backend:
   enabled: true
-  image: ghcr.io/akshaydubey29/mimir-insights-backend:20250719-115334
+  image: ghcr.io/akshaydubey29/mimir-insights-backend:20250719-121834
   replicaCount: 1
   resources:
     requests:
@@ -675,7 +675,7 @@ backend:
 # Frontend configuration
 frontend:
   enabled: true
-  image: ghcr.io/akshaydubey29/mimir-insights-frontend:20250719-115334
+  image: ghcr.io/akshaydubey29/mimir-insights-frontend:20250719-121834
   replicaCount: 1
   resources:
     requests:
