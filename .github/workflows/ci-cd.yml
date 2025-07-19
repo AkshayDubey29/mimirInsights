@@ -34,6 +34,8 @@ jobs:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+        # Alternative: Use PAT if GITHUB_TOKEN doesn't work
+        # password: ${{ secrets.PAT_TOKEN }}
 
     - name: Generate timestamp tag
       id: timestamp
