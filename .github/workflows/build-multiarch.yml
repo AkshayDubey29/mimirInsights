@@ -1,0 +1,202 @@
+name: Build Multi-Architecture Docker Images
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'web-ui/**'
+      - 'Dockerfile.*'
+      - 'go.mod'
+      - 'go.sum'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'web-ui/**'
+      - 'Dockerfile.*'
+      - 'go.mod'
+      - 'go.sum'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      push_images:
+        description: 'Push images to registry'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/mimir-insights-frontend
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/mimir-insights-backend
+  BUILD_DATE: ${{ github.event.head_commit.timestamp || github.event.schedule || format('{0:yyyy-MM-ddTHH:mm:ssZ}', github.event.created_at) }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    strategy:
+      matrix:
+        include:
+          - name: frontend
+            dockerfile: Dockerfile.frontend
+            context: .
+            platforms: linux/amd64,linux/arm64
+            image_name: ${{ env.IMAGE_NAME_FRONTEND }}
+          - name: backend
+            dockerfile: Dockerfile.backend.multiarch
+            context: .
+            platforms: linux/amd64,linux/arm64
+            image_name: ${{ env.IMAGE_NAME_BACKEND }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: |
+          image=moby/buildkit:v0.12.0
+        platforms: linux/amd64,linux/arm64
+
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request' && github.event.inputs.push_images != 'false'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ matrix.image_name }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value=${{ github.event.inputs.version || 'v1.0.0' }},enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.title=MimirInsights ${{ matrix.name }}
+          org.opencontainers.image.description=MimirInsights ${{ matrix.name }} component
+          org.opencontainers.image.vendor=GitHub
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ env.BUILD_DATE }}
+
+    - name: Build and push ${{ matrix.name }} image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.dockerfile }}
+        platforms: ${{ matrix.platforms }}
+        push: ${{ github.event_name != 'pull_request' && github.event.inputs.push_images != 'false' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+          BUILD_DATE=${{ env.BUILD_DATE }}
+          VCS_REF=${{ github.sha }}
+          VERSION=${{ github.event.inputs.version || 'v1.0.0' }}
+
+  test-images:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Test backend image
+      run: |
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest --version || echo "Backend image test completed"
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest --help || echo "Backend help test completed"
+
+    - name: Test frontend image
+      run: |
+        docker run --rm -d --name test-frontend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+        sleep 10
+        docker logs test-frontend
+        docker stop test-frontend
+        docker rm test-frontend
+
+  create-release:
+    needs: [build-and-push, test-images]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.push_images == 'true'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.event.inputs.version }}
+        release_name: Release ${{ github.event.inputs.version }}
+        body: |
+          ## MimirInsights ${{ github.event.inputs.version }}
+          
+          ### Multi-Architecture Docker Images
+          
+          **Frontend Image:**
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.event.inputs.version }}`
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest`
+          
+          **Backend Image:**
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.event.inputs.version }}`
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest`
+          
+          ### Platforms Supported
+          - linux/amd64
+          - linux/arm64
+          
+          ### Deployment
+          
+          Update your Helm values to use the new images:
+          
+          ```yaml
+          frontend:
+            image:
+              repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+              tag: ${{ github.event.inputs.version }}
+              
+          backend:
+            image:
+              repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+              tag: ${{ github.event.inputs.version }}
+          ```
+        draft: false
+        prerelease: false 

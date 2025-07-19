@@ -685,7 +685,7 @@ frontend:
       memory: 256Mi
   env:
     - name: REACT_APP_API_BASE_URL
-      value: "/api"
+      value: ""
     - name: REACT_APP_ENABLE_MOCK_DATA
       value: "false"
     - name: REACT_APP_ENABLE_MONITORING
@@ -697,7 +697,7 @@ frontend:
     - name: ENVIRONMENT
       value: "production"
     - name: API_BASE_URL
-      value: "/api"
+      value: ""
     - name: NODE_ENV
       value: "production"
   service:

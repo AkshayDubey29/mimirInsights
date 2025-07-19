@@ -12,12 +12,13 @@ const runtimeConfig = (window as any).APP_CONFIG || {};
 
 export const config = {
   // API base URL - will be different for dev/staging/prod
-  apiBaseUrl: runtimeConfig.apiBaseUrl || process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080',
+  // In Kubernetes, this should point to the nginx proxy (same origin)
+  apiBaseUrl: runtimeConfig.apiBaseUrl || process.env.REACT_APP_API_BASE_URL || '',
   // Feature flag for using mock data
   useMockData: runtimeConfig.useMockData || process.env.REACT_APP_USE_MOCK_DATA === 'true',
   // Environment
   environment: process.env.NODE_ENV || 'development',
-  // API endpoints - include /api prefix since apiBaseUrl points to backend root
+  // API endpoints - include /api prefix since nginx will proxy to backend
   endpoints: {
     tenants: '/api/tenants',
     metrics: '/api/metrics',
