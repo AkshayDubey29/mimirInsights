@@ -85,7 +85,7 @@ export function useTenants(enhanced: boolean = false) {
         setLoading(false);
       }, 300);
     } else {
-      const endpoint = enhanced ? '/api/tenants/enhanced' : config.endpoints.tenants;
+      const endpoint = config.endpoints.tenants;
       fetch(`${config.apiBaseUrl}${endpoint}`)
         .then(res => res.json())
         .then(setData)
